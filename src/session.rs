@@ -68,6 +68,24 @@ impl Session {
     }
 }
 
+pub fn list_sessions(sessions_root: &Path) -> anyhow::Result<Vec<SessionId>> {
+    if !sessions_root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut ids = Vec::new();
+    for entry in std::fs::read_dir(sessions_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        if let Some(name) = entry.file_name().to_str() {
+            ids.push(SessionId(name.to_string()));
+        }
+    }
+    ids.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(ids)
+}
+
 fn slugify(input: &str) -> String {
     // Strip URL scheme (e.g. "https://", "http://") before slugifying
     let input = if let Some(rest) = input.strip_prefix("https://") {

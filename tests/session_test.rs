@@ -48,3 +48,33 @@ fn session_paths_point_inside_directory() {
     assert_eq!(session.transcript_path(), session.directory().join("transcript.md"));
     assert_eq!(session.edited_path(), session.directory().join("edited.md"));
 }
+
+#[test]
+fn list_sessions_returns_existing_dirs_sorted_desc() {
+    let tmp = TempDir::new().unwrap();
+    let sessions_root = tmp.path().join("sessions");
+    Session::create(&sessions_root, "2026-04-12", "old").unwrap();
+    Session::create(&sessions_root, "2026-04-14", "new").unwrap();
+    Session::create(&sessions_root, "2026-04-13", "mid").unwrap();
+
+    let listed = conch::session::list_sessions(&sessions_root).unwrap();
+    let ids: Vec<&str> = listed.iter().map(|s| s.as_str()).collect();
+
+    assert_eq!(
+        ids,
+        vec![
+            "2026-04-14-new",
+            "2026-04-13-mid",
+            "2026-04-12-old",
+        ]
+    );
+}
+
+#[test]
+fn list_sessions_returns_empty_when_no_dir() {
+    let tmp = TempDir::new().unwrap();
+    let sessions_root = tmp.path().join("does-not-exist");
+
+    let listed = conch::session::list_sessions(&sessions_root).unwrap();
+    assert!(listed.is_empty());
+}
