@@ -51,8 +51,24 @@ pub async fn run_agent(
                 return Err(anyhow!("agent hit max_tokens at turn {}", turn));
             }
             StopReason::ToolUse => {
-                // Handled in the next task.
-                return Err(anyhow!("tool use not yet supported"));
+                let mut tool_results = Vec::new();
+                for block in &response.content {
+                    if let ContentBlock::ToolUse { id, name, input } = block {
+                        let (result, is_error) = match registry.call(name, input.clone()).await {
+                            Ok(output) => (output, false),
+                            Err(e) => (format!("tool error: {}", e), true),
+                        };
+                        tool_results.push(ContentBlock::ToolResult {
+                            tool_use_id: id.clone(),
+                            content: result,
+                            is_error,
+                        });
+                    }
+                }
+                messages.push(Message {
+                    role: Role::User,
+                    content: tool_results,
+                });
             }
         }
     }
