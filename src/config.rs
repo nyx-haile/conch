@@ -35,4 +35,24 @@ impl Config {
     pub fn github_token(&self) -> Option<&str> {
         self.github_token.as_deref()
     }
+
+    pub fn from_env_map(
+        home: &Path,
+        env: &std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            home: home.to_path_buf(),
+            anthropic_api_key: env.get("ANTHROPIC_API_KEY").cloned(),
+            github_token: env.get("GITHUB_TOKEN").cloned(),
+        }
+    }
+
+    pub fn load() -> anyhow::Result<Self> {
+        let home = directories::UserDirs::new()
+            .ok_or_else(|| anyhow::anyhow!("could not determine user home directory"))?
+            .home_dir()
+            .to_path_buf();
+        let env: std::collections::HashMap<String, String> = std::env::vars().collect();
+        Ok(Self::from_env_map(&home, &env))
+    }
 }
