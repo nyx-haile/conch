@@ -20,6 +20,54 @@ impl SessionId {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct Session {
+    id: SessionId,
+    directory: PathBuf,
+    topic: String,
+}
+
+impl Session {
+    pub fn create(sessions_root: &Path, date: &str, topic: &str) -> anyhow::Result<Self> {
+        let id = SessionId::new(date, topic);
+        let directory = id.directory(sessions_root);
+        std::fs::create_dir_all(&directory)?;
+        Ok(Self {
+            id,
+            directory,
+            topic: topic.to_string(),
+        })
+    }
+
+    pub fn id(&self) -> &SessionId {
+        &self.id
+    }
+
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
+
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+
+    pub fn brief_path(&self) -> PathBuf {
+        self.directory.join("brief.md")
+    }
+
+    pub fn raw_audio_path(&self) -> PathBuf {
+        self.directory.join("raw_audio.wav")
+    }
+
+    pub fn transcript_path(&self) -> PathBuf {
+        self.directory.join("transcript.md")
+    }
+
+    pub fn edited_path(&self) -> PathBuf {
+        self.directory.join("edited.md")
+    }
+}
+
 fn slugify(input: &str) -> String {
     // Strip URL scheme (e.g. "https://", "http://") before slugifying
     let input = if let Some(rest) = input.strip_prefix("https://") {
