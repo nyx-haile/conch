@@ -16,7 +16,8 @@ async fn main() -> anyhow::Result<()> {
             println!("talk: {}", topic);
         }
         Command::Sessions => {
-            println!("sessions");
+            let config = conch::config::Config::load()?;
+            conch::commands::sessions::run(&config)?;
         }
         Command::Export { session_id, out } => {
             println!("export: {} -> {:?}", session_id, out);
