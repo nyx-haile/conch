@@ -13,7 +13,8 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Talk { topic } => {
-            println!("talk: {}", topic);
+            let config = conch::config::Config::load()?;
+            conch::commands::talk::run(&config, &topic).await?;
         }
         Command::Sessions => {
             let config = conch::config::Config::load()?;
