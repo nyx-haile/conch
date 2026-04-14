@@ -21,7 +21,8 @@ async fn main() -> anyhow::Result<()> {
             conch::commands::sessions::run(&config)?;
         }
         Command::Export { session_id, out } => {
-            println!("export: {} -> {:?}", session_id, out);
+            let config = conch::config::Config::load()?;
+            conch::commands::export::run(&config, &session_id, out)?;
         }
     }
     Ok(())
