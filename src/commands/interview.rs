@@ -10,8 +10,9 @@ pub async fn run(config: &Config, model: Model, topic: &str) -> anyhow::Result<(
     let session = Session::create(&config.sessions_dir(), &date, topic)
         .context("creating session directory")?;
 
+    let provider = config.provider()?;
     println!("Session: {}", session.id().as_str());
-    println!("Model: {}", model.id());
+    println!("Model: {}", provider.slug_for(model));
     println!("Researching topic...");
 
     let brief = run_prep(config, model, topic)

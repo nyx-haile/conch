@@ -19,6 +19,7 @@ pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Res
     let api_key = config
         .openrouter_api_key()
         .ok_or_else(|| anyhow::anyhow!("OPENROUTER_API_KEY is not set"))?;
+    let provider = config.provider()?;
 
     let client = LlmClient::openrouter(api_key);
 
@@ -32,7 +33,7 @@ pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Res
     registry.register(Box::new(LocalFsTool::new(cwd)));
 
     let agent_config = AgentConfig {
-        model: model.id().to_string(),
+        model: provider.slug_for(model).to_string(),
         max_tokens: 4096,
         system_prompt: brief_prompt::SYSTEM_PROMPT.to_string(),
         max_turns: 12,
