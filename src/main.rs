@@ -2,7 +2,7 @@ use clap::Parser;
 use conch::cli::{Cli, Command};
 use conch::model::Model;
 
-const TEST_TOPIC: &str = "conch";
+const TEST_TOPIC: &str = "this repository";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

@@ -2,14 +2,17 @@ pub mod agent;
 pub mod brief_prompt;
 pub mod calc_tool;
 pub mod github_tool;
+pub mod local_fs_tool;
 pub mod tools;
 
+use anyhow::Context;
 use crate::claude::client::ClaudeClient;
 use crate::config::Config;
 use crate::model::Model;
 use crate::prep::agent::{run_agent, AgentConfig};
 use crate::prep::calc_tool::CalcTool;
 use crate::prep::github_tool::GithubTool;
+use crate::prep::local_fs_tool::LocalFsTool;
 use crate::prep::tools::ToolRegistry;
 
 pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Result<String> {
@@ -19,11 +22,14 @@ pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Res
 
     let client = ClaudeClient::anthropic(api_key);
 
+    let cwd = std::env::current_dir().context("reading current working directory")?;
+
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(CalcTool));
     registry.register(Box::new(GithubTool::github(
         config.github_token().map(|t| t.to_string()),
     )));
+    registry.register(Box::new(LocalFsTool::new(cwd)));
 
     let agent_config = AgentConfig {
         model: model.id().to_string(),
