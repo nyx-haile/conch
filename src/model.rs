@@ -6,11 +6,14 @@ pub enum Model {
 }
 
 impl Model {
+    /// OpenRouter model slug. These currently point at free-tier models
+    /// while we iterate; swap back to `anthropic/claude-*` once we care
+    /// about quality and rate limits.
     pub fn id(self) -> &'static str {
         match self {
-            Self::Haiku => "claude-haiku-4-5-20251001",
-            Self::Sonnet => "claude-sonnet-4-6",
-            Self::Opus => "claude-opus-4-6",
+            Self::Haiku => "meta-llama/llama-3.3-70b-instruct:free",
+            Self::Sonnet => "deepseek/deepseek-chat-v3:free",
+            Self::Opus => "deepseek/deepseek-r1:free",
         }
     }
 }
@@ -20,9 +23,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn model_ids_match_expected_values() {
-        assert_eq!(Model::Haiku.id(), "claude-haiku-4-5-20251001");
-        assert_eq!(Model::Sonnet.id(), "claude-sonnet-4-6");
-        assert_eq!(Model::Opus.id(), "claude-opus-4-6");
+    fn model_ids_are_openrouter_free_slugs() {
+        assert!(Model::Haiku.id().ends_with(":free"));
+        assert!(Model::Sonnet.id().ends_with(":free"));
+        assert!(Model::Opus.id().ends_with(":free"));
     }
 }

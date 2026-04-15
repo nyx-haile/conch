@@ -15,12 +15,12 @@ fn config_with_home_override_returns_expected_paths() {
 fn config_from_env_reads_api_keys() {
     let home = PathBuf::from("/tmp/fake-home");
     let mut env = std::collections::HashMap::new();
-    env.insert("ANTHROPIC_API_KEY".to_string(), "sk-test-123".to_string());
+    env.insert("OPENROUTER_API_KEY".to_string(), "sk-or-test".to_string());
     env.insert("GITHUB_TOKEN".to_string(), "ghp-test-456".to_string());
 
     let config = Config::from_env_map(&home, &env);
 
-    assert_eq!(config.anthropic_api_key(), Some("sk-test-123"));
+    assert_eq!(config.openrouter_api_key(), Some("sk-or-test"));
     assert_eq!(config.github_token(), Some("ghp-test-456"));
 }
 
@@ -31,6 +31,6 @@ fn config_from_env_handles_missing_keys() {
 
     let config = Config::from_env_map(&home, &env);
 
-    assert_eq!(config.anthropic_api_key(), None);
+    assert_eq!(config.openrouter_api_key(), None);
     assert_eq!(config.github_token(), None);
 }

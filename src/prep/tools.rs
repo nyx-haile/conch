@@ -1,4 +1,4 @@
-use crate::claude::types::ToolDefinition;
+use crate::llm::types::ToolDefinition;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -38,11 +38,7 @@ impl ToolRegistry {
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools
             .values()
-            .map(|t| ToolDefinition {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                input_schema: t.input_schema(),
-            })
+            .map(|t| ToolDefinition::function(t.name(), t.description(), t.input_schema()))
             .collect()
     }
 }

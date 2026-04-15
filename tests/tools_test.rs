@@ -44,5 +44,6 @@ fn registry_exposes_tool_definitions() {
 
     let defs = registry.definitions();
     assert_eq!(defs.len(), 1);
-    assert_eq!(defs[0].name, "echo");
+    assert_eq!(defs[0].function.name, "echo");
+    assert_eq!(defs[0].tool_type, "function");
 }

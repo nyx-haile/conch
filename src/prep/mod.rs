@@ -6,8 +6,8 @@ pub mod local_fs_tool;
 pub mod tools;
 
 use anyhow::Context;
-use crate::claude::client::ClaudeClient;
 use crate::config::Config;
+use crate::llm::client::LlmClient;
 use crate::model::Model;
 use crate::prep::agent::{run_agent, AgentConfig};
 use crate::prep::calc_tool::CalcTool;
@@ -17,10 +17,10 @@ use crate::prep::tools::ToolRegistry;
 
 pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Result<String> {
     let api_key = config
-        .anthropic_api_key()
-        .ok_or_else(|| anyhow::anyhow!("ANTHROPIC_API_KEY is not set"))?;
+        .openrouter_api_key()
+        .ok_or_else(|| anyhow::anyhow!("OPENROUTER_API_KEY is not set"))?;
 
-    let client = ClaudeClient::anthropic(api_key);
+    let client = LlmClient::openrouter(api_key);
 
     let cwd = std::env::current_dir().context("reading current working directory")?;
 

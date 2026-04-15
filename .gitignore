@@ -2,3 +2,6 @@
 /.conch-test
 *.swp
 .DS_Store
+.env
+.env.*
+!.env.example

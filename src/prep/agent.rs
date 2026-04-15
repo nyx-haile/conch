@@ -1,7 +1,5 @@
-use crate::claude::client::ClaudeClient;
-use crate::claude::types::{
-    ContentBlock, Message, MessagesRequest, Role, StopReason,
-};
+use crate::llm::client::LlmClient;
+use crate::llm::types::{ChatRequest, Message};
 use crate::prep::tools::ToolRegistry;
 use anyhow::anyhow;
 
@@ -14,76 +12,71 @@ pub struct AgentConfig {
 }
 
 pub async fn run_agent(
-    client: &ClaudeClient,
+    client: &LlmClient,
     registry: &ToolRegistry,
     config: &AgentConfig,
     user_prompt: &str,
 ) -> anyhow::Result<String> {
-    let mut messages: Vec<Message> = vec![Message {
-        role: Role::User,
-        content: vec![ContentBlock::Text {
-            text: user_prompt.to_string(),
-        }],
-    }];
+    let mut messages: Vec<Message> = vec![
+        Message::system(config.system_prompt.clone()),
+        Message::user(user_prompt),
+    ];
 
     for turn in 0..config.max_turns {
-        let request = MessagesRequest {
+        let request = ChatRequest {
             model: config.model.clone(),
-            max_tokens: config.max_tokens,
-            system: Some(config.system_prompt.clone()),
             messages: messages.clone(),
+            max_tokens: config.max_tokens,
             tools: registry.definitions(),
         };
 
-        let response = client.messages(&request).await?;
+        let response = client.chat(&request).await?;
+        let choice = response
+            .choices
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow!("no choices in response at turn {}", turn))?;
 
-        // Append assistant's turn to history.
-        messages.push(Message {
-            role: Role::Assistant,
-            content: response.content.clone(),
-        });
+        let assistant_msg = choice.message.clone();
+        let tool_calls = assistant_msg.tool_calls.clone().unwrap_or_default();
+        messages.push(assistant_msg);
 
-        match response.stop_reason {
-            StopReason::EndTurn | StopReason::StopSequence => {
-                return Ok(extract_text(&response.content));
+        match choice.finish_reason.as_str() {
+            "stop" | "end_turn" => {
+                return Ok(choice.message.content.unwrap_or_default());
             }
-            StopReason::MaxTokens => {
+            "length" | "max_tokens" => {
                 return Err(anyhow!("agent hit max_tokens at turn {}", turn));
             }
-            StopReason::ToolUse => {
-                let mut tool_results = Vec::new();
-                for block in &response.content {
-                    if let ContentBlock::ToolUse { id, name, input } = block {
-                        let (result, is_error) = match registry.call(name, input.clone()).await {
-                            Ok(output) => (output, false),
-                            Err(e) => (format!("tool error: {}", e), true),
-                        };
-                        tool_results.push(ContentBlock::ToolResult {
-                            tool_use_id: id.clone(),
-                            content: result,
-                            is_error,
-                        });
-                    }
+            "tool_calls" | "tool_use" | "function_call" => {
+                if tool_calls.is_empty() {
+                    return Err(anyhow!(
+                        "finish_reason indicated tool_calls but none were present"
+                    ));
                 }
-                messages.push(Message {
-                    role: Role::User,
-                    content: tool_results,
-                });
+                for call in &tool_calls {
+                    let args: serde_json::Value =
+                        serde_json::from_str(&call.function.arguments).unwrap_or_else(|_| {
+                            serde_json::json!({ "raw": call.function.arguments })
+                        });
+                    let result = match registry.call(&call.function.name, args).await {
+                        Ok(output) => output,
+                        Err(e) => format!("tool error: {}", e),
+                    };
+                    messages.push(Message::tool_result(&call.id, result));
+                }
+            }
+            other => {
+                return Err(anyhow!(
+                    "unexpected finish_reason at turn {}: {}",
+                    turn,
+                    other
+                ));
             }
         }
     }
-    Err(anyhow!("agent did not terminate within {} turns", config.max_turns))
-}
-
-fn extract_text(content: &[ContentBlock]) -> String {
-    let mut out = String::new();
-    for block in content {
-        if let ContentBlock::Text { text } = block {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(text);
-        }
-    }
-    out
+    Err(anyhow!(
+        "agent did not terminate within {} turns",
+        config.max_turns
+    ))
 }

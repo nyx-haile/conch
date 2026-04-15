@@ -1,4 +1,4 @@
-use conch::claude::client::ClaudeClient;
+use conch::llm::client::LlmClient;
 use conch::prep::agent::{run_agent, AgentConfig};
 use conch::prep::github_tool::GithubTool;
 use conch::prep::tools::ToolRegistry;
@@ -8,10 +8,9 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
 async fn prep_produces_brief_using_github_tool() {
-    let claude_server = MockServer::start().await;
+    let llm_server = MockServer::start().await;
     let github_server = MockServer::start().await;
 
-    // GitHub responses.
     Mock::given(method("GET"))
         .and(path("/repos/user/howtowin"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -29,46 +28,55 @@ async fn prep_produces_brief_using_github_tool() {
         .mount(&github_server)
         .await;
 
-    // Claude: first request wants get_repo, second writes the brief.
+    // Turn 1: model requests a github tool call.
     Mock::given(method("POST"))
-        .and(path("/v1/messages"))
+        .and(path("/chat/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "msg_1",
-            "model": "claude-opus-4-6",
-            "content": [
-                {
-                    "type": "tool_use",
-                    "id": "t1",
-                    "name": "github",
-                    "input": { "action": "get_repo", "owner": "user", "repo": "howtowin" }
-                }
-            ],
-            "stop_reason": "tool_use"
+            "id": "chatcmpl_1",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": null,
+                    "tool_calls": [{
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "github",
+                            "arguments": "{\"action\":\"get_repo\",\"owner\":\"user\",\"repo\":\"howtowin\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "tool_calls"
+            }]
         })))
         .up_to_n_times(1)
-        .mount(&claude_server)
+        .mount(&llm_server)
         .await;
 
+    // Turn 2: model writes the final brief.
     Mock::given(method("POST"))
-        .and(path("/v1/messages"))
+        .and(path("/chat/completions"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "msg_2",
-            "model": "claude-opus-4-6",
-            "content": [{
-                "type": "text",
-                "text": "# Interview Brief: howtowin\n\n## Summary\nA tool for winning, written in Rust.\n"
-            }],
-            "stop_reason": "end_turn"
+            "id": "chatcmpl_2",
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": "# Interview Brief: howtowin\n\n## Summary\nA tool for winning, written in Rust.\n"
+                },
+                "finish_reason": "stop"
+            }]
         })))
-        .mount(&claude_server)
+        .mount(&llm_server)
         .await;
 
-    let client = ClaudeClient::new("sk-test", &claude_server.uri());
+    let client = LlmClient::new("sk-or-test", &llm_server.uri());
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(GithubTool::new(None, github_server.uri())));
 
     let config = AgentConfig {
-        model: "claude-opus-4-6".into(),
+        model: "some/model".into(),
         max_tokens: 4096,
         system_prompt: "research agent".into(),
         max_turns: 10,
