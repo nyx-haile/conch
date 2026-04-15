@@ -19,6 +19,15 @@ thiserror = "1.0"
 tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "fs", "process"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+cpal = "0.15"
+rodio = { version = "0.17", default-features = false }
+hound = "3.5"
+rubato = "0.15"
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
+ratatui = "0.26"
+crossterm = { version = "0.27", features = ["event-stream"] }
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+futures-util = "0.3"
 
 [dev-dependencies]
 assert_cmd = "2.0"

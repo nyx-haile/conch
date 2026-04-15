@@ -7,23 +7,28 @@ pub struct Cli {
     pub command: Command,
 }
 
+#[derive(clap::Args, Debug)]
+pub struct InterviewArgs {
+    pub topic: String,
+    /// Disable TTS (text mode).
+    #[arg(long)]
+    pub no_tts: bool,
+    /// STT backend override (deepgram | local).
+    #[arg(long)]
+    pub stt: Option<String>,
+    /// TTS backend override (elevenlabs | local | text).
+    #[arg(long)]
+    pub tts: Option<String>,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Command {
     /// Fast rough brief using the haiku model
-    Sketch {
-        /// Topic: GitHub URL, project name, or freeform description
-        topic: String,
-    },
+    Sketch(InterviewArgs),
     /// Default interview brief using the sonnet model
-    Talk {
-        /// Topic: GitHub URL, project name, or freeform description
-        topic: String,
-    },
+    Talk(InterviewArgs),
     /// Deep research brief using the opus model
-    Chronicle {
-        /// Topic: GitHub URL, project name, or freeform description
-        topic: String,
-    },
+    Chronicle(InterviewArgs),
     /// Smoke test: runs sketch against a baked-in default topic
     Test,
     /// List past sessions

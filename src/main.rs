@@ -4,6 +4,21 @@ use conch::model::Model;
 
 const TEST_TOPIC: &str = "this repository";
 
+fn apply_overrides(
+    mut config: conch::config::Config,
+    args: &conch::cli::InterviewArgs,
+) -> anyhow::Result<conch::config::Config> {
+    if let Some(stt) = &args.stt {
+        config = config.with_stt_backend(stt.parse()?);
+    }
+    if args.no_tts {
+        config = config.with_tts_backend(conch::config::TtsBackend::Text);
+    } else if let Some(tts) = &args.tts {
+        config = config.with_tts_backend(tts.parse()?);
+    }
+    Ok(config)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
@@ -17,20 +32,24 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
-        Command::Sketch { topic } => {
+        Command::Sketch(args) => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Haiku, &topic, None).await?;
+            let config = apply_overrides(config, &args)?;
+            conch::commands::interview::run(&config, Model::Haiku, &args.topic, None).await?;
         }
-        Command::Talk { topic } => {
+        Command::Talk(args) => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Sonnet, &topic, None).await?;
+            let config = apply_overrides(config, &args)?;
+            conch::commands::interview::run(&config, Model::Sonnet, &args.topic, None).await?;
         }
-        Command::Chronicle { topic } => {
+        Command::Chronicle(args) => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Opus, &topic, None).await?;
+            let config = apply_overrides(config, &args)?;
+            conch::commands::interview::run(&config, Model::Opus, &args.topic, None).await?;
         }
         Command::Test => {
             let config = conch::config::Config::load()?;
+            let config = config.with_tts_backend(conch::config::TtsBackend::Text);
             let cwd = std::env::current_dir()?;
             let label = cwd
                 .file_name()

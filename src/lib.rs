@@ -1,8 +1,12 @@
+pub mod audio;
 pub mod cli;
 pub mod commands;
 pub mod config;
+pub mod interview;
 pub mod llm;
 pub mod model;
 pub mod prep;
 pub mod provider;
 pub mod session;
+pub mod stt;
+pub mod tts;
