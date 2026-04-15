@@ -41,12 +41,17 @@ pub fn resample_i16(input: &[i16], from_rate: u32, to_rate: u32, channels: u16) 
         pos += chunk_size;
     }
     if pos < float_in.len() {
+        let tail_len = float_in.len() - pos;
         let mut tail = float_in[pos..].to_vec();
         tail.resize(chunk_size, 0.0);
         let out = resampler
             .process(&[tail], None)
             .context("resample tail")?;
-        out_samples.extend_from_slice(&out[0]);
+        // Only keep the portion of the output that corresponds to the
+        // real (unpadded) tail samples; the rest is resampled zero-padding.
+        let valid = ((tail_len as f64) * ratio).round() as usize;
+        let take = valid.min(out[0].len());
+        out_samples.extend_from_slice(&out[0][..take]);
     }
 
     Ok(out_samples
@@ -105,6 +110,11 @@ pub fn decode_mp3_to_pcm(bytes: &[u8]) -> Result<(Vec<i16>, u32)> {
                 if spec.channels.count() == 1 {
                     pcm.extend_from_slice(buf.samples());
                 } else {
+                    debug_assert_eq!(
+                        buf.samples().len() % spec.channels.count(),
+                        0,
+                        "symphonia returned incomplete frame"
+                    );
                     for frame in buf.samples().chunks_exact(spec.channels.count()) {
                         let sum: i32 = frame.iter().map(|&s| s as i32).sum();
                         pcm.push((sum / spec.channels.count() as i32) as i16);
