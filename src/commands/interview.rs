@@ -1,21 +1,30 @@
 use crate::config::Config;
+use crate::llm;
 use crate::model::Model;
 use crate::prep::run_prep;
 use crate::session::Session;
 use anyhow::Context;
 use chrono::Local;
 
-pub async fn run(config: &Config, model: Model, topic: &str) -> anyhow::Result<()> {
+pub async fn run(
+    config: &Config,
+    model: Model,
+    topic: &str,
+    session_label: Option<&str>,
+) -> anyhow::Result<()> {
     let date = Local::now().format("%Y-%m-%d").to_string();
-    let session = Session::create(&config.sessions_dir(), &date, topic)
+    let label = session_label.unwrap_or(topic);
+    let session = Session::create(&config.sessions_dir(), &date, label)
         .context("creating session directory")?;
 
     let provider = config.provider()?;
+    let (client, model_slug) = llm::resolve(config, provider, model)?;
+
     println!("Session: {}", session.id().as_str());
-    println!("Model: {}", provider.slug_for(model));
+    println!("Model: {}", model_slug);
     println!("Researching topic...");
 
-    let brief = run_prep(config, model, topic)
+    let brief = run_prep(config, &client, &model_slug, topic)
         .await
         .context("prep stage failed")?;
     std::fs::write(session.brief_path(), &brief).context("writing brief.md")?;

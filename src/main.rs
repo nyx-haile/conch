@@ -19,19 +19,26 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Sketch { topic } => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Haiku, &topic).await?;
+            conch::commands::interview::run(&config, Model::Haiku, &topic, None).await?;
         }
         Command::Talk { topic } => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Sonnet, &topic).await?;
+            conch::commands::interview::run(&config, Model::Sonnet, &topic, None).await?;
         }
         Command::Chronicle { topic } => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Opus, &topic).await?;
+            conch::commands::interview::run(&config, Model::Opus, &topic, None).await?;
         }
         Command::Test => {
             let config = conch::config::Config::load()?;
-            conch::commands::interview::run(&config, Model::Haiku, TEST_TOPIC).await?;
+            let cwd = std::env::current_dir()?;
+            let label = cwd
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("test")
+                .to_string();
+            conch::commands::interview::run(&config, Model::Haiku, TEST_TOPIC, Some(&label))
+                .await?;
         }
         Command::Sessions => {
             let config = conch::config::Config::load()?;

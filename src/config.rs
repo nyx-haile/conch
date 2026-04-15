@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 pub struct Config {
     home: PathBuf,
     openrouter_api_key: Option<String>,
+    anthropic_api_key: Option<String>,
     github_token: Option<String>,
     provider: Option<Provider>,
 }
@@ -15,6 +16,7 @@ impl Config {
         Self {
             home: home.to_path_buf(),
             openrouter_api_key: None,
+            anthropic_api_key: None,
             github_token: None,
             provider: None,
         }
@@ -34,6 +36,10 @@ impl Config {
 
     pub fn openrouter_api_key(&self) -> Option<&str> {
         self.openrouter_api_key.as_deref()
+    }
+
+    pub fn anthropic_api_key(&self) -> Option<&str> {
+        self.anthropic_api_key.as_deref()
     }
 
     pub fn github_token(&self) -> Option<&str> {
@@ -59,6 +65,7 @@ impl Config {
         Ok(Self {
             home: home.to_path_buf(),
             openrouter_api_key: env.get("OPENROUTER_API_KEY").cloned(),
+            anthropic_api_key: env.get("ANTHROPIC_API_KEY").cloned(),
             github_token: env.get("GITHUB_TOKEN").cloned(),
             provider,
         })

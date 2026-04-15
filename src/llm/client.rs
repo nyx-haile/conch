@@ -1,25 +1,22 @@
+use crate::llm::anthropic::AnthropicClient;
 use crate::llm::types::{ChatRequest, ChatResponse};
 use anyhow::{anyhow, Context};
 use reqwest::Client;
 
 #[derive(Debug, Clone)]
-pub struct LlmClient {
+pub struct OpenRouterClient {
     http: Client,
     base_url: String,
     api_key: String,
 }
 
-impl LlmClient {
+impl OpenRouterClient {
     pub fn new(api_key: impl Into<String>, base_url: &str) -> Self {
         Self {
             http: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: api_key.into(),
         }
-    }
-
-    pub fn openrouter(api_key: impl Into<String>) -> Self {
-        Self::new(api_key, "https://openrouter.ai/api/v1")
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
@@ -46,5 +43,36 @@ impl LlmClient {
             .json::<ChatResponse>()
             .await
             .context("parsing chat completions response")
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum LlmClient {
+    OpenRouter(OpenRouterClient),
+    Anthropic(AnthropicClient),
+}
+
+impl LlmClient {
+    pub fn new(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::OpenRouter(OpenRouterClient::new(api_key, base_url))
+    }
+
+    pub fn openrouter(api_key: impl Into<String>) -> Self {
+        Self::new(api_key, "https://openrouter.ai/api/v1")
+    }
+
+    pub fn anthropic(api_key: impl Into<String>) -> Self {
+        Self::Anthropic(AnthropicClient::new(api_key, "https://api.anthropic.com"))
+    }
+
+    pub fn anthropic_with_base_url(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::Anthropic(AnthropicClient::new(api_key, base_url))
+    }
+
+    pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
+        match self {
+            Self::OpenRouter(c) => c.chat(request).await,
+            Self::Anthropic(c) => c.chat(request).await,
+        }
     }
 }

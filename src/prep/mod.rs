@@ -5,24 +5,21 @@ pub mod github_tool;
 pub mod local_fs_tool;
 pub mod tools;
 
-use anyhow::Context;
 use crate::config::Config;
 use crate::llm::client::LlmClient;
-use crate::model::Model;
 use crate::prep::agent::{run_agent, AgentConfig};
 use crate::prep::calc_tool::CalcTool;
 use crate::prep::github_tool::GithubTool;
 use crate::prep::local_fs_tool::LocalFsTool;
 use crate::prep::tools::ToolRegistry;
+use anyhow::Context;
 
-pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Result<String> {
-    let api_key = config
-        .openrouter_api_key()
-        .ok_or_else(|| anyhow::anyhow!("OPENROUTER_API_KEY is not set"))?;
-    let provider = config.provider()?;
-
-    let client = LlmClient::openrouter(api_key);
-
+pub async fn run_prep(
+    config: &Config,
+    client: &LlmClient,
+    model_slug: &str,
+    topic: &str,
+) -> anyhow::Result<String> {
     let cwd = std::env::current_dir().context("reading current working directory")?;
 
     let mut registry = ToolRegistry::new();
@@ -33,12 +30,12 @@ pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Res
     registry.register(Box::new(LocalFsTool::new(cwd)));
 
     let agent_config = AgentConfig {
-        model: provider.slug_for(model).to_string(),
+        model: model_slug.to_string(),
         max_tokens: 4096,
         system_prompt: brief_prompt::SYSTEM_PROMPT.to_string(),
         max_turns: 12,
     };
 
     let user_prompt = format!("Topic: {}\n\nProduce the interview brief now.", topic);
-    run_agent(&client, &registry, &agent_config, &user_prompt).await
+    run_agent(client, &registry, &agent_config, &user_prompt).await
 }
