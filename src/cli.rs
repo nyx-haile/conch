@@ -9,11 +9,23 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
-    /// Start a new interview session on a topic
+    /// Fast rough brief using the haiku model
+    Sketch {
+        /// Topic: GitHub URL, project name, or freeform description
+        topic: String,
+    },
+    /// Default interview brief using the sonnet model
     Talk {
         /// Topic: GitHub URL, project name, or freeform description
         topic: String,
     },
+    /// Deep research brief using the opus model
+    Chronicle {
+        /// Topic: GitHub URL, project name, or freeform description
+        topic: String,
+    },
+    /// Smoke test: runs sketch against a baked-in default topic
+    Test,
     /// List past sessions
     Sessions,
     /// Re-export outputs from a past session

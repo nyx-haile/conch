@@ -8,7 +8,10 @@ fn cli_help_lists_subcommands() {
         .arg("--help")
         .assert()
         .success()
+        .stdout(contains("sketch"))
         .stdout(contains("talk"))
+        .stdout(contains("chronicle"))
+        .stdout(contains("test"))
         .stdout(contains("sessions"))
         .stdout(contains("export"));
 }

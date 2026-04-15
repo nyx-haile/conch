@@ -6,14 +6,13 @@ pub mod tools;
 
 use crate::claude::client::ClaudeClient;
 use crate::config::Config;
+use crate::model::Model;
 use crate::prep::agent::{run_agent, AgentConfig};
 use crate::prep::calc_tool::CalcTool;
 use crate::prep::github_tool::GithubTool;
 use crate::prep::tools::ToolRegistry;
 
-pub const DEFAULT_MODEL: &str = "claude-opus-4-6";
-
-pub async fn run_prep(config: &Config, topic: &str) -> anyhow::Result<String> {
+pub async fn run_prep(config: &Config, model: Model, topic: &str) -> anyhow::Result<String> {
     let api_key = config
         .anthropic_api_key()
         .ok_or_else(|| anyhow::anyhow!("ANTHROPIC_API_KEY is not set"))?;
@@ -27,7 +26,7 @@ pub async fn run_prep(config: &Config, topic: &str) -> anyhow::Result<String> {
     )));
 
     let agent_config = AgentConfig {
-        model: DEFAULT_MODEL.to_string(),
+        model: model.id().to_string(),
         max_tokens: 4096,
         system_prompt: brief_prompt::SYSTEM_PROMPT.to_string(),
         max_turns: 12,

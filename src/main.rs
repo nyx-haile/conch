@@ -1,5 +1,8 @@
 use clap::Parser;
 use conch::cli::{Cli, Command};
+use conch::model::Model;
+
+const TEST_TOPIC: &str = "conch";
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -12,9 +15,21 @@ async fn main() -> anyhow::Result<()> {
 
     let cli = Cli::parse();
     match cli.command {
+        Command::Sketch { topic } => {
+            let config = conch::config::Config::load()?;
+            conch::commands::interview::run(&config, Model::Haiku, &topic).await?;
+        }
         Command::Talk { topic } => {
             let config = conch::config::Config::load()?;
-            conch::commands::talk::run(&config, &topic).await?;
+            conch::commands::interview::run(&config, Model::Sonnet, &topic).await?;
+        }
+        Command::Chronicle { topic } => {
+            let config = conch::config::Config::load()?;
+            conch::commands::interview::run(&config, Model::Opus, &topic).await?;
+        }
+        Command::Test => {
+            let config = conch::config::Config::load()?;
+            conch::commands::interview::run(&config, Model::Haiku, TEST_TOPIC).await?;
         }
         Command::Sessions => {
             let config = conch::config::Config::load()?;
