@@ -40,7 +40,7 @@ impl SpeechToText for DeepgramStt {
         let mut req = url.as_str().into_client_request().context("building ws request")?;
         req.headers_mut().insert(
             "Authorization",
-            format!("Token {}", self.api_key).parse().unwrap(),
+            format!("Token {}", self.api_key).parse().map_err(|_| anyhow::anyhow!("invalid api key for Authorization header"))?,
         );
 
         let (ws, _) = connect_async(req).await.context("connecting to deepgram")?;
@@ -107,7 +107,7 @@ impl SttStream for DeepgramStream {
                     let parsed: Result<DgResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) => {
-                            let alt = r.channel.alternatives.into_iter().next()?;
+                            let Some(alt) = r.channel.alternatives.into_iter().next() else { continue; };
                             if alt.transcript.is_empty() {
                                 continue;
                             }
