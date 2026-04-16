@@ -112,10 +112,7 @@ impl RodioSink {
 
         let worker = std::thread::spawn(move || {
             let (_stream, handle) = match OutputStream::try_default() {
-                Ok(pair) => {
-                    let _ = init_tx.send(Ok(()));
-                    pair
-                }
+                Ok(pair) => pair,
                 Err(e) => {
                     let _ = init_tx.send(Err(anyhow::anyhow!("rodio output stream: {e}")));
                     return;
@@ -125,10 +122,12 @@ impl RodioSink {
             let sink = match Sink::try_new(&handle) {
                 Ok(s) => s,
                 Err(e) => {
-                    tracing::error!("failed to create rodio sink: {e}");
+                    let _ = init_tx.send(Err(anyhow::anyhow!("rodio sink: {e}")));
                     return;
                 }
             };
+
+            let _ = init_tx.send(Ok(()));
 
             while let Ok(cmd) = cmd_rx.recv() {
                 match cmd {
@@ -138,6 +137,7 @@ impl RodioSink {
                     }
                     RodioCmd::Stop => {
                         sink.stop();
+                        sink.clear();
                     }
                     RodioCmd::Shutdown => break,
                 }
