@@ -82,6 +82,9 @@ impl AppState {
     }
 
     pub fn record_turn(&mut self, turn: &Turn) {
+        if matches!(turn.speaker, Speaker::User) {
+            self.current_user_draft.clear();
+        }
         self.history.push(TurnView {
             speaker: turn.speaker,
             text: turn.text.clone(),
