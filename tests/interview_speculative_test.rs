@@ -23,6 +23,13 @@ fn similarity_is_low_for_divergent_text() {
 }
 
 #[test]
+fn short_prefix_does_not_auto_commit() {
+    // A one-word partial that happens to be a prefix of the final should NOT
+    // get the 1.0 fast-path — cosine will produce a low score instead.
+    assert!(!should_commit_draft("so", "so after thinking about it I took a different approach"));
+}
+
+#[test]
 fn commit_threshold_matches_spec() {
     assert!(should_commit_draft("a b c d", "a b c d e"));
     assert!(!should_commit_draft("foo bar baz", "totally different response"));
