@@ -175,15 +175,21 @@ fn build_cpal_input_stream(
                     let resampled = if device_rate == 16_000 {
                         mono
                     } else {
-                        crate::audio::convert::resample_i16(&mono, device_rate, 16_000, 1)
-                            .unwrap_or_default()
+                        match crate::audio::convert::resample_i16(&mono, device_rate, 16_000, 1) {
+                            Ok(r) => r,
+                            Err(e) => {
+                                tracing::warn!("resample failed, dropping frame: {e}");
+                                buf.clear();
+                                continue;
+                            }
+                        }
                     };
                     let _ = tx.send(Frame { pcm: resampled });
                     buf.clear();
                 }
             }
         },
-        |e| eprintln!("cpal input stream error: {}", e),
+        |e| tracing::error!("cpal input stream error: {e}"),
         None,
     )?;
     stream.play()?;
