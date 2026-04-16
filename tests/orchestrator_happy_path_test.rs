@@ -578,3 +578,129 @@ async fn speculative_draft_commits_when_partial_matches_final() {
     let pcm_len = collected.lock().unwrap().len();
     assert!(pcm_len > 0, "audio sink should have received PCM data");
 }
+
+#[tokio::test]
+async fn speculative_miss_triggers_fresh_llm_call() {
+    use conch::stt::TranscriptEvent;
+
+    // CountingLlm with 3 replies: opening, speculative (should be discarded),
+    // fresh continuation (should appear in history).
+    let llm = Arc::new(fakes::CountingLlm::new(vec![
+        "Welcome!".to_string(),
+        "Speculative reply -- SHOULD NOT APPEAR".to_string(),
+        "Fresh reply after miss".to_string(),
+    ]));
+    let call_count = llm.count.clone();
+
+    // PartialStt: emits a stable partial that triggers a speculative call,
+    // then a Final that DIVERGES from the partial (causing a miss).
+    let stt = Arc::new(fakes::PartialStt::new(vec![vec![
+        fakes::ScriptedEvent {
+            delay: Duration::from_millis(100),
+            event: TranscriptEvent::Partial {
+                text: "I built this".to_string(),
+                stability: 0.9,
+            },
+        },
+        // Second identical partial 1600ms later -- triggers speculative call.
+        fakes::ScriptedEvent {
+            delay: Duration::from_millis(1600),
+            event: TranscriptEvent::Partial {
+                text: "I built this".to_string(),
+                stability: 0.9,
+            },
+        },
+        // Final that diverges from the partial — too different for commit.
+        fakes::ScriptedEvent {
+            delay: Duration::ZERO,
+            event: TranscriptEvent::Final {
+                text: "I built this using rust and tokio for async".to_string(),
+                words: vec![],
+            },
+        },
+    ]]));
+
+    let tts = Arc::new(fakes::FakeTts);
+    let sink = fakes::FakeSink::new();
+
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Speculative Miss Test".to_string(),
+        "brief".to_string(),
+    )));
+
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        ..OrchestratorConfig::default()
+    };
+
+    let orch = Orchestrator::new(
+        llm,
+        stt,
+        tts,
+        Box::new(sink),
+        state.clone(),
+        event_rx,
+        config,
+    );
+
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    // Wait for the opening to finish.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Start recording.
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+
+    // Wait for partial events to play out (100ms + 1600ms) plus extra
+    // for the speculative call to be spawned and complete.
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+
+    // Stop recording.
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+
+    // Wait for the orchestrator to transcribe, detect miss, call fresh, speak.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Quit to end the session.
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(10), handle)
+        .await
+        .expect("timed out")
+        .expect("panicked")
+        .expect("error");
+
+    assert_eq!(result, EndSignal::UserQuit);
+
+    // The LLM should have been called exactly 3 times:
+    // 1. Opening
+    // 2. Speculative call (aborted because partial diverged from final)
+    // 3. Fresh continuation
+    let total_calls = call_count.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        total_calls, 3,
+        "speculative miss should cause a fresh LLM call; expected 3 calls, got {}",
+        total_calls
+    );
+
+    // The fresh reply (third) should appear in history, NOT the speculative reply.
+    let history = state.read().await.history().to_vec();
+    let assistant_turns: Vec<&str> = history
+        .iter()
+        .filter(|t| matches!(t.speaker, conch::interview::history::Speaker::Conch))
+        .map(|t| t.text.as_str())
+        .collect();
+    assert!(
+        assistant_turns.contains(&"Fresh reply after miss"),
+        "expected the fresh reply in history, got: {:?}",
+        assistant_turns
+    );
+    assert!(
+        !assistant_turns.contains(&"Speculative reply -- SHOULD NOT APPEAR"),
+        "speculative reply should NOT appear in history, got: {:?}",
+        assistant_turns
+    );
+}

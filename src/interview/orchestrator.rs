@@ -501,10 +501,16 @@ impl Orchestrator {
     async fn drain_final_text(&self, stream: &mut dyn SttStream) -> String {
         let mut parts = Vec::new();
         while let Some(ev) = stream.next_event().await {
-            if let TranscriptEvent::Final { text, .. } = ev {
-                if !text.is_empty() {
-                    parts.push(text);
+            match ev {
+                TranscriptEvent::Final { text, .. } => {
+                    if !text.is_empty() {
+                        parts.push(text);
+                    }
                 }
+                TranscriptEvent::Error { message } => {
+                    tracing::warn!(err = %message, "STT error during drain_final_text");
+                }
+                _ => {}
             }
         }
         parts.join(" ")
