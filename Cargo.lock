@@ -405,6 +405,7 @@ dependencies = [
  "http",
  "meval",
  "predicates",
+ "rand 0.8.5",
  "ratatui",
  "reqwest",
  "rodio",

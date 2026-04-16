@@ -22,6 +22,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 cpal = "0.15"
 rodio = { version = "0.17", default-features = false }
 hound = "3.5"
+rand = "0.8"
 rubato = "0.15"
 symphonia = { version = "0.5", default-features = false, features = ["mp3"] }
 ratatui = "0.26"
