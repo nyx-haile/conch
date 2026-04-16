@@ -10,7 +10,7 @@ pub enum UserEvent {
 
 pub fn translate_key(event: &KeyEvent) -> Option<UserEvent> {
     match (event.code, event.modifiers) {
-        (KeyCode::Char('c'), m) if m.contains(KeyModifiers::CONTROL) => Some(UserEvent::Quit),
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(UserEvent::Quit),
         (KeyCode::Char(' '), _) => Some(UserEvent::MicToggle),
         (KeyCode::Esc, _) => Some(UserEvent::Interrupt),
         _ => None,

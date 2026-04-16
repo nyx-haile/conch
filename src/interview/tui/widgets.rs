@@ -105,7 +105,7 @@ fn render_transcript(f: &mut Frame, area: Rect, state: &AppState) {
         .saturating_sub(area.height.saturating_sub(2) as usize);
     let view: Vec<Line> = lines.into_iter().skip(take).collect();
     f.render_widget(
-        Paragraph::new(view).block(block).wrap(Wrap { trim: false }),
+        Paragraph::new(view).block(block),
         area,
     );
 }
@@ -130,7 +130,7 @@ fn render_sidebar(f: &mut Frame, area: Rect, state: &AppState) {
         rows[0],
     );
 
-    let wave = render_waveform(state.waveform(), rows[1].width as usize);
+    let wave = render_waveform(state.waveform(), rows[1].width.saturating_sub(2) as usize);
     f.render_widget(
         Paragraph::new(wave).block(Block::default().borders(Borders::ALL)),
         rows[1],
@@ -196,7 +196,7 @@ fn textwrap(text: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     for word in text.split_whitespace() {
-        if cur.len() + word.len() + 1 > width && !cur.is_empty() {
+        if cur.chars().count() + word.chars().count() + 1 > width && !cur.is_empty() {
             out.push(std::mem::take(&mut cur));
         }
         if !cur.is_empty() {
