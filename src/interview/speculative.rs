@@ -17,10 +17,11 @@ pub fn similarity(partial: &str, final_text: &str) -> f32 {
     // otherwise a one-word partial would commit against any longer final.
     let p_words = p.split_whitespace().count();
     let f_words = f.split_whitespace().count();
-    if f_words > 0 && p_words as f32 / f_words as f32 >= 0.7 {
-        if f.starts_with(&p) || p.starts_with(&f) {
-            return 1.0;
-        }
+    if f_words > 0
+        && p_words as f32 / f_words as f32 >= 0.7
+        && (f.starts_with(&p) || p.starts_with(&f))
+    {
+        return 1.0;
     }
     cosine(&p, &f)
 }

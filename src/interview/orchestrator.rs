@@ -1,6 +1,6 @@
 use crate::audio::output::AudioSink;
 use crate::interview::fillers::{FillerCache, FillerCategory};
-use crate::interview::history::Speaker;
+use crate::interview::history::{ConversationLog, Speaker, Turn};
 use crate::interview::intent::{detect_end_command, end_session_tool};
 use crate::interview::prompt::compose_system_prompt;
 use crate::interview::speculative::{partial_is_stable_long_enough, should_commit_draft};
@@ -101,6 +101,8 @@ pub struct Orchestrator {
     events: mpsc::Receiver<UserEvent>,
     config: OrchestratorConfig,
     messages: Vec<Message>,
+    log: Option<ConversationLog>,
+    start_time: Instant,
 }
 
 impl Orchestrator {
@@ -122,11 +124,29 @@ impl Orchestrator {
             events,
             config,
             messages: Vec::new(),
+            log: None,
+            start_time: Instant::now(),
         }
+    }
+
+    /// Attach a conversation log for persisting turns to disk.
+    pub fn with_log(mut self, log: ConversationLog) -> Self {
+        self.log = Some(log);
+        self
     }
 
     /// Run the full interview loop. Returns the reason the session ended.
     pub async fn run(mut self) -> Result<EndSignal> {
+        let result = self.run_inner().await;
+        if let Some(ref mut log) = self.log {
+            if let Err(e) = log.finalize() {
+                tracing::warn!(err = %e, "failed to finalize conversation log");
+            }
+        }
+        result
+    }
+
+    async fn run_inner(&mut self) -> Result<EndSignal> {
         // Build the system prompt and seed the message history.
         let system = compose_system_prompt(&self.config.brief, self.config.brand.as_deref());
         self.messages.push(Message::system(system));
@@ -152,12 +172,9 @@ impl Orchestrator {
                 .unwrap_or_default()
         };
         self.commit_assistant_turn(&opening).await;
-        match self.speak_interruptible(&opening).await? {
-            SpeakOutcome::Quit => {
-                self.set_status(Status::Closing).await;
-                return Ok(EndSignal::UserQuit);
-            }
-            _ => {} // Completed or Interrupted — continue to main loop
+        if self.speak_interruptible(&opening).await? == SpeakOutcome::Quit {
+            self.set_status(Status::Closing).await;
+            return Ok(EndSignal::UserQuit);
         }
 
         // ---- Main loop ----
@@ -194,6 +211,7 @@ impl Orchestrator {
                     // and optionally kick off a background LLM call.
                     let mut last_partial_text = String::new();
                     let mut partial_stable_since: Option<Instant> = None;
+                    #[allow(clippy::type_complexity)]
                     let mut speculative_handle: Option<
                         tokio::task::JoinHandle<Result<(String, Vec<ToolCall>)>>,
                     > = None;
@@ -350,12 +368,9 @@ impl Orchestrator {
                         };
                         self.commit_assistant_turn(&closing).await;
                         // Even the closing speak is interruptible.
-                        match self.speak_interruptible(&closing).await? {
-                            SpeakOutcome::Quit => {
-                                self.set_status(Status::Closing).await;
-                                return Ok(EndSignal::UserQuit);
-                            }
-                            _ => {}
+                        if self.speak_interruptible(&closing).await? == SpeakOutcome::Quit {
+                            self.set_status(Status::Closing).await;
+                            return Ok(EndSignal::UserQuit);
                         }
                         self.set_status(Status::Closing).await;
                         return Ok(EndSignal::VoiceCommand);
@@ -416,24 +431,18 @@ impl Orchestrator {
                             reply
                         };
                         self.commit_assistant_turn(&closing_text).await;
-                        match self.speak_interruptible(&closing_text).await? {
-                            SpeakOutcome::Quit => {
-                                self.set_status(Status::Closing).await;
-                                return Ok(EndSignal::UserQuit);
-                            }
-                            _ => {}
+                        if self.speak_interruptible(&closing_text).await? == SpeakOutcome::Quit {
+                            self.set_status(Status::Closing).await;
+                            return Ok(EndSignal::UserQuit);
                         }
                         self.set_status(Status::Closing).await;
                         return Ok(EndSignal::LlmEndSession { reason });
                     }
 
                     self.commit_assistant_turn(&reply).await;
-                    match self.speak_interruptible(&reply).await? {
-                        SpeakOutcome::Quit => {
-                            self.set_status(Status::Closing).await;
-                            return Ok(EndSignal::UserQuit);
-                        }
-                        _ => {} // Completed or Interrupted — loop back for next event
+                    if self.speak_interruptible(&reply).await? == SpeakOutcome::Quit {
+                        self.set_status(Status::Closing).await;
+                        return Ok(EndSignal::UserQuit);
                     }
                 }
             }
@@ -452,6 +461,19 @@ impl Orchestrator {
             speaker: Speaker::User,
             text: text.to_string(),
         });
+        if let Some(ref mut log) = self.log {
+            let elapsed = self.start_time.elapsed().as_millis() as u64;
+            if let Err(e) = log.append(Turn {
+                speaker: Speaker::User,
+                text: text.to_string(),
+                timestamp_ms: elapsed,
+                speculative_hit: false,
+                interrupted: false,
+                filler_played: None,
+            }) {
+                tracing::warn!(err = %e, "failed to log user turn");
+            }
+        }
     }
 
     async fn commit_assistant_turn(&mut self, text: &str) {
@@ -465,6 +487,19 @@ impl Orchestrator {
             speaker: Speaker::Conch,
             text: text.to_string(),
         });
+        if let Some(ref mut log) = self.log {
+            let elapsed = self.start_time.elapsed().as_millis() as u64;
+            if let Err(e) = log.append(Turn {
+                speaker: Speaker::Conch,
+                text: text.to_string(),
+                timestamp_ms: elapsed,
+                speculative_hit: false,
+                interrupted: false,
+                filler_played: None,
+            }) {
+                tracing::warn!(err = %e, "failed to log assistant turn");
+            }
+        }
     }
 
     /// Call the LLM with the `end_session` tool. Returns (text, tool_calls).

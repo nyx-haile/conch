@@ -1,7 +1,10 @@
 use crate::llm::anthropic::AnthropicClient;
-use crate::llm::types::{ChatRequest, ChatResponse};
+use crate::llm::types::{ChatRequest, ChatResponse, Choice, Message, Role};
 use anyhow::{anyhow, Context};
 use reqwest::Client;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static SCRIPTED_LLM_INDEX: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone)]
 pub struct OpenRouterClient {
@@ -70,6 +73,29 @@ impl LlmClient {
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
+        if let Ok(script) = std::env::var("CONCH_TEST_SCRIPTED_LLM") {
+            let parts: Vec<&str> = script.split('|').collect();
+            let idx = SCRIPTED_LLM_INDEX.fetch_add(1, Ordering::SeqCst);
+            let text = parts
+                .get(idx)
+                .unwrap_or(&"(scripted: no more replies)")
+                .to_string();
+            return Ok(ChatResponse {
+                id: Some("scripted".to_string()),
+                choices: vec![Choice {
+                    index: 0,
+                    message: Message {
+                        role: Role::Assistant,
+                        content: Some(text),
+                        tool_calls: None,
+                        tool_call_id: None,
+                    },
+                    finish_reason: "stop".to_string(),
+                }],
+                model: Some("scripted".to_string()),
+            });
+        }
+
         match self {
             Self::OpenRouter(c) => c.chat(request).await,
             Self::Anthropic(c) => c.chat(request).await,

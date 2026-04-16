@@ -48,8 +48,15 @@ async fn main() -> anyhow::Result<()> {
             conch::commands::interview::run(&config, Model::Opus, &args.topic, None).await?;
         }
         Command::Test => {
+            // SAFETY: single-threaded at this point (before orchestrator spawns tasks).
+            #[allow(unused_unsafe)]
+            unsafe {
+                std::env::set_var("CONCH_HEADLESS", "1");
+            }
             let config = conch::config::Config::load()?;
-            let config = config.with_tts_backend(conch::config::TtsBackend::Text);
+            let config = config
+                .with_tts_backend(conch::config::TtsBackend::Text)
+                .with_stt_backend(conch::config::SttBackend::Local);
             let cwd = std::env::current_dir()?;
             let label = cwd
                 .file_name()
