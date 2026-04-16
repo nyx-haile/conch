@@ -30,6 +30,20 @@ impl LlmCaller for LlmClient {
 }
 
 // ---------------------------------------------------------------------------
+// SpeakOutcome — what happened when we tried to speak
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SpeakOutcome {
+    /// TTS finished naturally.
+    Completed,
+    /// User pressed Esc — playback was interrupted.
+    Interrupted,
+    /// User pressed Quit during playback.
+    Quit,
+}
+
+// ---------------------------------------------------------------------------
 // EndSignal — why the orchestrator stopped
 // ---------------------------------------------------------------------------
 
@@ -131,7 +145,13 @@ impl Orchestrator {
                 .unwrap_or_default()
         };
         self.commit_assistant_turn(&opening).await;
-        self.speak(&opening).await?;
+        match self.speak_interruptible(&opening).await? {
+            SpeakOutcome::Quit => {
+                self.set_status(Status::Closing).await;
+                return Ok(EndSignal::UserQuit);
+            }
+            _ => {} // Completed or Interrupted — continue to main loop
+        }
 
         // ---- Main loop ----
         loop {
@@ -148,8 +168,7 @@ impl Orchestrator {
                     return Ok(EndSignal::UserQuit);
                 }
                 UserEvent::Interrupt => {
-                    // Stop current playback; keep looping.
-                    self.sink.lock().await.stop();
+                    // Nothing playing at idle — ignore.
                     continue;
                 }
                 UserEvent::MicToggle => {
@@ -222,7 +241,14 @@ impl Orchestrator {
                                 .unwrap_or_default()
                         };
                         self.commit_assistant_turn(&closing).await;
-                        self.speak(&closing).await?;
+                        // Even the closing speak is interruptible.
+                        match self.speak_interruptible(&closing).await? {
+                            SpeakOutcome::Quit => {
+                                self.set_status(Status::Closing).await;
+                                return Ok(EndSignal::UserQuit);
+                            }
+                            _ => {}
+                        }
                         self.set_status(Status::Closing).await;
                         return Ok(EndSignal::VoiceCommand);
                     }
@@ -239,13 +265,25 @@ impl Orchestrator {
                             reply
                         };
                         self.commit_assistant_turn(&closing_text).await;
-                        self.speak(&closing_text).await?;
+                        match self.speak_interruptible(&closing_text).await? {
+                            SpeakOutcome::Quit => {
+                                self.set_status(Status::Closing).await;
+                                return Ok(EndSignal::UserQuit);
+                            }
+                            _ => {}
+                        }
                         self.set_status(Status::Closing).await;
                         return Ok(EndSignal::LlmEndSession { reason });
                     }
 
                     self.commit_assistant_turn(&reply).await;
-                    self.speak(&reply).await?;
+                    match self.speak_interruptible(&reply).await? {
+                        SpeakOutcome::Quit => {
+                            self.set_status(Status::Closing).await;
+                            return Ok(EndSignal::UserQuit);
+                        }
+                        _ => {} // Completed or Interrupted — loop back for next event
+                    }
                 }
             }
         }
@@ -322,19 +360,54 @@ impl Orchestrator {
     }
 
     /// Synthesize text via TTS and push to the audio sink.
-    async fn speak(&self, text: &str) -> Result<()> {
+    ///
+    /// Playback is interruptible: while streaming chunks from TTS we also
+    /// poll `self.events`. An `Interrupt` event aborts the TTS stream and
+    /// stops the sink. A `Quit` event does the same and signals shutdown.
+    async fn speak_interruptible(&mut self, text: &str) -> Result<SpeakOutcome> {
         self.set_status(Status::Speaking).await;
         let tts_config = TtsConfig { voice_id: None };
         let mut stream = self.tts.open_stream(&tts_config).await?;
         stream.push_text(text).await?;
         stream.end_of_input().await?;
-        while let Some(chunk) = stream.next_chunk().await {
-            self.sink
-                .lock()
-                .await
-                .push(chunk, self.config.sample_rate)?;
+
+        let outcome;
+        loop {
+            tokio::select! {
+                chunk = stream.next_chunk() => {
+                    match chunk {
+                        Some(pcm) => {
+                            self.sink.lock().await.push(pcm, self.config.sample_rate)?;
+                        }
+                        None => {
+                            outcome = SpeakOutcome::Completed;
+                            break;
+                        }
+                    }
+                }
+                event = self.events.recv() => {
+                    match event {
+                        Some(UserEvent::Interrupt) => {
+                            let _ = stream.abort().await;
+                            self.sink.lock().await.stop();
+                            outcome = SpeakOutcome::Interrupted;
+                            break;
+                        }
+                        Some(UserEvent::Quit) => {
+                            let _ = stream.abort().await;
+                            self.sink.lock().await.stop();
+                            outcome = SpeakOutcome::Quit;
+                            break;
+                        }
+                        _ => {
+                            // Ignore other events during playback.
+                        }
+                    }
+                }
+            }
         }
+
         self.set_status(Status::Idle).await;
-        Ok(())
+        Ok(outcome)
     }
 }

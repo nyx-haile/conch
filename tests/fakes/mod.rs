@@ -193,6 +193,62 @@ impl TtsStream for EmptyTtsStream {
 }
 
 // ---------------------------------------------------------------------------
+// SlowTts — yields multiple chunks with a delay between each (for barge-in)
+// ---------------------------------------------------------------------------
+
+pub struct SlowTts {
+    pub chunk_count: usize,
+    pub chunk_delay: std::time::Duration,
+}
+
+#[async_trait]
+impl TextToSpeech for SlowTts {
+    async fn open_stream(&self, _config: &TtsConfig) -> Result<Box<dyn TtsStream>> {
+        Ok(Box::new(SlowTtsStream {
+            remaining: self.chunk_count,
+            delay: self.chunk_delay,
+            aborted: false,
+        }))
+    }
+
+    async fn synthesize_batch(&self, texts: &[&str]) -> Result<Vec<Vec<i16>>> {
+        Ok(texts.iter().map(|_| vec![0i16; 100]).collect())
+    }
+}
+
+#[derive(Debug)]
+struct SlowTtsStream {
+    remaining: usize,
+    delay: std::time::Duration,
+    aborted: bool,
+}
+
+#[async_trait]
+impl TtsStream for SlowTtsStream {
+    async fn push_text(&mut self, _chunk: &str) -> Result<()> {
+        Ok(())
+    }
+
+    async fn end_of_input(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn next_chunk(&mut self) -> Option<Vec<i16>> {
+        if self.aborted || self.remaining == 0 {
+            return None;
+        }
+        tokio::time::sleep(self.delay).await;
+        self.remaining -= 1;
+        Some(vec![0i16; 160])
+    }
+
+    async fn abort(&mut self) -> Result<()> {
+        self.aborted = true;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FakeMic helpers — keep a broadcast channel alive for MicGate
 // ---------------------------------------------------------------------------
 
