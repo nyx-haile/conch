@@ -30,3 +30,24 @@ fn appstate_formats_elapsed_time() {
     assert_eq!(s.format_elapsed(Duration::from_secs(65)), "00:01:05");
     assert_eq!(s.format_elapsed(Duration::from_secs(3661)), "01:01:01");
 }
+
+use conch::interview::tui::keys::{translate_key, UserEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+#[test]
+fn space_toggles_mic() {
+    let e = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+    assert_eq!(translate_key(&e), Some(UserEvent::MicToggle));
+}
+
+#[test]
+fn esc_maps_to_interrupt() {
+    let e = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+    assert_eq!(translate_key(&e), Some(UserEvent::Interrupt));
+}
+
+#[test]
+fn ctrl_c_quits() {
+    let e = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+    assert_eq!(translate_key(&e), Some(UserEvent::Quit));
+}
