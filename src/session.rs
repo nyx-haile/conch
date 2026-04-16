@@ -66,6 +66,22 @@ impl Session {
     pub fn edited_path(&self) -> PathBuf {
         self.directory.join("edited.md")
     }
+
+    pub fn conversation_path(&self) -> PathBuf {
+        self.directory.join("conversation.json")
+    }
+
+    pub fn mic_wav_path(&self) -> PathBuf {
+        self.directory.join("mic.wav")
+    }
+
+    pub fn tts_wav_path(&self) -> PathBuf {
+        self.directory.join("tts.wav")
+    }
+
+    pub fn log_path(&self) -> PathBuf {
+        self.directory.join("session.log")
+    }
 }
 
 pub fn list_sessions(sessions_root: &Path) -> anyhow::Result<Vec<SessionId>> {

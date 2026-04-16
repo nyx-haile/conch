@@ -1,0 +1,75 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::fs::{File, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Speaker {
+    Conch,
+    User,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Turn {
+    pub speaker: Speaker,
+    pub text: String,
+    pub timestamp_ms: u64,
+    #[serde(default)]
+    pub speculative_hit: bool,
+    #[serde(default)]
+    pub interrupted: bool,
+    #[serde(default)]
+    pub filler_played: Option<String>,
+}
+
+pub struct ConversationLog {
+    json_path: PathBuf,
+    md: File,
+    turns: Vec<Turn>,
+}
+
+impl ConversationLog {
+    pub fn new(json_path: impl AsRef<Path>, md_path: impl AsRef<Path>) -> Result<Self> {
+        let md = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(md_path.as_ref())
+            .with_context(|| format!("opening {}", md_path.as_ref().display()))?;
+        Ok(Self {
+            json_path: json_path.as_ref().to_path_buf(),
+            md,
+            turns: Vec::new(),
+        })
+    }
+
+    pub fn append(&mut self, turn: Turn) -> Result<()> {
+        let label = match turn.speaker {
+            Speaker::Conch => "Conch",
+            Speaker::User => "You",
+        };
+        writeln!(self.md, "**{}:** {}\n", label, turn.text).context("writing transcript.md")?;
+        self.md.flush().context("flushing transcript.md")?;
+        self.turns.push(turn);
+        self.write_json()?;
+        Ok(())
+    }
+
+    pub fn finalize(&mut self) -> Result<()> {
+        self.write_json()
+    }
+
+    fn write_json(&self) -> Result<()> {
+        let bytes =
+            serde_json::to_vec_pretty(&self.turns).context("serializing conversation")?;
+        std::fs::write(&self.json_path, bytes)
+            .with_context(|| format!("writing {}", self.json_path.display()))?;
+        Ok(())
+    }
+
+    pub fn turns(&self) -> &[Turn] {
+        &self.turns
+    }
+}
