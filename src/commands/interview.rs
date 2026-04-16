@@ -61,6 +61,9 @@ pub async fn run(
             ))
         }
         TtsBackend::Text => {
+            // Dropping the receiver is intentional: with no reader, the sender
+            // disconnects and push_text becomes a no-op, which is the desired
+            // behavior for text-only mode (no audio produced).
             let (tts, _rx) = crate::tts::text::TextTts::new();
             Arc::new(tts)
         }
@@ -121,20 +124,31 @@ pub async fn run(
     Ok(())
 }
 
+/// RAII guard that restores the terminal on drop (raw mode + alternate screen).
+struct TerminalGuard;
+
+impl Drop for TerminalGuard {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+        let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
+    }
+}
+
 async fn run_tui(
     state: Arc<RwLock<AppState>>,
     orch: Orchestrator,
     event_tx: mpsc::Sender<UserEvent>,
 ) -> anyhow::Result<()> {
     use crate::interview::tui::widgets::render_frame;
-    use crossterm::terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-    };
+    use crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
 
     enable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), EnterAlternateScreen)?;
+    // Guard ensures cleanup even if we bail via `?` below.
+    let _guard = TerminalGuard;
+
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut term = Terminal::new(backend)?;
 
@@ -153,7 +167,9 @@ async fn run_tui(
     }
 
     key_handle.abort();
-    disable_raw_mode()?;
-    crossterm::execute!(term.backend_mut(), LeaveAlternateScreen)?;
-    orch_handle.await?.map(|_| ())
+    let signal = orch_handle.await??;
+    // _guard drops here, restoring the terminal.
+    drop(_guard);
+    println!("Interview ended: {signal:?}");
+    Ok(())
 }

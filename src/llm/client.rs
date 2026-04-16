@@ -3,8 +3,17 @@ use crate::llm::types::{ChatRequest, ChatResponse, Choice, Message, Role};
 use anyhow::{anyhow, Context};
 use reqwest::Client;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
+/// Counter for scripted LLM responses. Only meaningful when
+/// `CONCH_TEST_SCRIPTED_LLM` is set. Note: this is process-global and
+/// never resets — safe when the scripted mode is used from a subprocess
+/// (e.g., the smoke test), but would need per-test reset logic if used
+/// from in-process `#[tokio::test]` tests.
 static SCRIPTED_LLM_INDEX: AtomicUsize = AtomicUsize::new(0);
+
+/// Cached check for the scripted LLM env var (checked once per process).
+static SCRIPTED_LLM_SCRIPT: OnceLock<Option<String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
 pub struct OpenRouterClient {
@@ -73,7 +82,8 @@ impl LlmClient {
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        if let Ok(script) = std::env::var("CONCH_TEST_SCRIPTED_LLM") {
+        let cached = SCRIPTED_LLM_SCRIPT.get_or_init(|| std::env::var("CONCH_TEST_SCRIPTED_LLM").ok());
+        if let Some(script) = cached {
             let parts: Vec<&str> = script.split('|').collect();
             let idx = SCRIPTED_LLM_INDEX.fetch_add(1, Ordering::SeqCst);
             let text = parts
