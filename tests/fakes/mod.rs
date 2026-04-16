@@ -117,13 +117,17 @@ impl LlmCaller for CountingLlm {
 pub struct SlowLlm {
     inner: FakeLlm,
     delay: std::time::Duration,
+    call_count: std::sync::atomic::AtomicU32,
 }
 
 impl SlowLlm {
+    /// The delay is applied starting from the second call (the opening call
+    /// completes instantly so tests don't need to wait for it).
     pub fn new(replies: Vec<String>, delay: std::time::Duration) -> Self {
         Self {
             inner: FakeLlm::new(replies),
             delay,
+            call_count: std::sync::atomic::AtomicU32::new(0),
         }
     }
 }
@@ -131,7 +135,10 @@ impl SlowLlm {
 #[async_trait]
 impl LlmCaller for SlowLlm {
     async fn chat(&self, req: &ChatRequest) -> Result<ChatResponse> {
-        tokio::time::sleep(self.delay).await;
+        let n = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n > 0 {
+            tokio::time::sleep(self.delay).await;
+        }
         self.inner.chat(req).await
     }
 }

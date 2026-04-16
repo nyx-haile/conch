@@ -556,8 +556,15 @@ impl Orchestrator {
                             outcome = SpeakOutcome::Quit;
                             break;
                         }
-                        _ => {
-                            // Ignore other events during playback.
+                        Some(_) => {
+                            // Ignore MicToggle during playback.
+                        }
+                        None => {
+                            // Channel closed — treat as quit.
+                            let _ = stream.abort().await;
+                            self.sink.lock().await.stop();
+                            outcome = SpeakOutcome::Quit;
+                            break;
                         }
                     }
                 }

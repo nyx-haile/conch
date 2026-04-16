@@ -379,8 +379,9 @@ async fn barge_in_interrupts_speaking_and_returns_to_idle() {
 
 #[tokio::test]
 async fn slow_llm_triggers_thinking_filler_status() {
-    // Opening is instant (first reply), but the continuation after a user
-    // turn takes 1.5s — well past the 700ms filler threshold.
+    // SlowLlm skips the delay on the first call (opening), so only the
+    // continuation after a user turn takes 1.5s — well past the 700ms
+    // filler threshold.
     let llm = Arc::new(fakes::SlowLlm::new(
         vec![
             "Welcome!".to_string(),
@@ -421,8 +422,8 @@ async fn slow_llm_triggers_thinking_filler_status() {
 
     let handle = tokio::spawn(async move { orch.run().await });
 
-    // Wait for opening LLM call (1.5s) + speak to finish.
-    tokio::time::sleep(Duration::from_millis(1600)).await;
+    // Opening is instant (SlowLlm skips delay on first call).
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Start a user turn.
     event_tx.send(UserEvent::MicToggle).await.unwrap();
