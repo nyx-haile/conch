@@ -3,6 +3,7 @@ use crate::interview::fillers::{FillerCache, FillerCategory};
 use crate::interview::history::Speaker;
 use crate::interview::intent::{detect_end_command, end_session_tool};
 use crate::interview::prompt::compose_system_prompt;
+use crate::interview::speculative::{partial_is_stable_long_enough, should_commit_draft};
 use crate::interview::tui::state::{AppState, Status, TurnView};
 use crate::interview::tui::UserEvent;
 use crate::llm::client::LlmClient;
@@ -12,7 +13,7 @@ use crate::tts::{TextToSpeech, TtsConfig};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, RwLock, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -178,7 +179,7 @@ impl Orchestrator {
                     continue;
                 }
                 UserEvent::MicToggle => {
-                    // ---- Record phase ----
+                    // ---- Record phase (with speculative STT tracking) ----
                     self.set_status(Status::Listening).await;
 
                     // Open an STT stream.
@@ -189,20 +190,105 @@ impl Orchestrator {
                     };
                     let mut stt_stream = self.stt.open_stream(&stt_config).await?;
 
-                    // Wait for the next MicToggle (release) or Quit.
+                    // Speculative drafting state: track stable partials
+                    // and optionally kick off a background LLM call.
+                    let mut last_partial_text = String::new();
+                    let mut partial_stable_since: Option<Instant> = None;
+                    let mut speculative_handle: Option<
+                        tokio::task::JoinHandle<Result<(String, Vec<ToolCall>)>>,
+                    > = None;
+                    let mut speculative_partial = String::new();
+                    let mut early_finals: Vec<String> = Vec::new();
+
+                    // Poll user events AND STT partial events while recording.
+                    // Once the STT stream yields None we stop polling it to
+                    // avoid busy-looping (fakes return None immediately).
+                    let mut stt_alive = true;
                     let stopped = loop {
-                        match self.events.recv().await {
-                            Some(UserEvent::MicToggle) => break false,
-                            Some(UserEvent::Quit) => break true,
-                            Some(UserEvent::Interrupt) => {
-                                // Ignore interrupt during recording.
-                                continue;
+                        if stt_alive {
+                            tokio::select! {
+                                biased; // prefer user events over STT partials
+                                event = self.events.recv() => {
+                                    match event {
+                                        Some(UserEvent::MicToggle) => break false,
+                                        Some(UserEvent::Quit) => break true,
+                                        Some(UserEvent::Interrupt) => continue,
+                                        None => break true,
+                                    }
+                                }
+                                stt_event = stt_stream.next_event() => {
+                                    match stt_event {
+                                        Some(TranscriptEvent::Partial { text, stability }) => {
+                                            let is_stable = stability >= 0.8;
+                                            if text != last_partial_text {
+                                                last_partial_text = text;
+                                                partial_stable_since = if is_stable {
+                                                    Some(Instant::now())
+                                                } else {
+                                                    None
+                                                };
+                                            } else if is_stable && partial_stable_since.is_none() {
+                                                partial_stable_since = Some(Instant::now());
+                                            }
+
+                                            // Check whether we should launch a speculative call.
+                                            if speculative_handle.is_none() && !last_partial_text.is_empty() {
+                                                let stable_ms = partial_stable_since
+                                                    .map(|t| t.elapsed().as_millis() as u64)
+                                                    .unwrap_or(0);
+                                                if partial_is_stable_long_enough(stable_ms, is_stable) {
+                                                    let llm = Arc::clone(&self.llm);
+                                                    let mut msgs = self.messages.clone();
+                                                    msgs.push(Message::user(&last_partial_text));
+                                                    let model = self.config.model.clone();
+                                                    let max_tokens = self.config.max_tokens;
+                                                    speculative_partial = last_partial_text.clone();
+
+                                                    speculative_handle = Some(tokio::spawn(async move {
+                                                        let req = ChatRequest {
+                                                            model,
+                                                            messages: msgs,
+                                                            max_tokens,
+                                                            tools: vec![end_session_tool()],
+                                                        };
+                                                        let resp = llm.chat(&req).await?;
+                                                        let choice = resp.choices.first()
+                                                            .ok_or_else(|| anyhow!("no choices"))?;
+                                                        let text = choice.message.content.clone().unwrap_or_default();
+                                                        let tool_calls = choice.message.tool_calls.clone().unwrap_or_default();
+                                                        Ok((text, tool_calls))
+                                                    }));
+                                                }
+                                            }
+                                        }
+                                        Some(TranscriptEvent::Final { text, .. }) => {
+                                            // Rare during recording but possible.
+                                            if !text.is_empty() {
+                                                early_finals.push(text);
+                                            }
+                                        }
+                                        Some(TranscriptEvent::Error { .. }) | None => {
+                                            // STT stream ended or errored during recording.
+                                            stt_alive = false;
+                                        }
+                                    }
+                                }
                             }
-                            None => break true,
+                        } else {
+                            // STT stream exhausted — only wait for user events.
+                            match self.events.recv().await {
+                                Some(UserEvent::MicToggle) => break false,
+                                Some(UserEvent::Quit) => break true,
+                                Some(UserEvent::Interrupt) => continue,
+                                None => break true,
+                            }
                         }
                     };
 
                     if stopped {
+                        if let Some(h) = speculative_handle {
+                            h.abort();
+                        }
                         let _ = stt_stream.close().await;
                         self.set_status(Status::Closing).await;
                         return Ok(EndSignal::UserQuit);
@@ -212,12 +298,25 @@ impl Orchestrator {
                     self.set_status(Status::Thinking).await;
                     stt_stream.end_of_utterance().await?;
 
-                    // Collect the final transcript.
-                    let user_text = self.drain_final_text(&mut *stt_stream).await;
+                    // Collect the final transcript (merge any finals captured
+                    // during recording with those arriving after end_of_utterance).
+                    let late_text = self.drain_final_text(&mut *stt_stream).await;
                     let _ = stt_stream.close().await;
+
+                    let user_text = if early_finals.is_empty() {
+                        late_text
+                    } else if late_text.is_empty() {
+                        early_finals.join(" ")
+                    } else {
+                        early_finals.push(late_text);
+                        early_finals.join(" ")
+                    };
 
                     if user_text.is_empty() {
                         // Nothing was said — go back to idle.
+                        if let Some(h) = speculative_handle {
+                            h.abort();
+                        }
                         self.set_status(Status::Idle).await;
                         continue;
                     }
@@ -227,6 +326,9 @@ impl Orchestrator {
 
                     // ---- Check voice end command ----
                     if detect_end_command(&user_text) {
+                        if let Some(h) = speculative_handle {
+                            h.abort();
+                        }
                         // Ask LLM for a closing line using a temporary directive
                         // so we don't inject two consecutive user messages into history.
                         let closing = {
@@ -259,25 +361,48 @@ impl Orchestrator {
                         return Ok(EndSignal::VoiceCommand);
                     }
 
-                    // ---- LLM continuation (with filler race) ----
+                    // ---- LLM continuation (speculative or fresh, with filler race) ----
+                    //
+                    // If a speculative call was launched and its partial matches the
+                    // final text closely enough, commit the speculative result directly.
+                    // Otherwise, call the LLM fresh.
                     let (reply, tool_calls) = {
-                        let llm_future = self.call_llm_with_tools();
-                        let filler_delay = tokio::time::sleep(Duration::from_millis(700));
-                        tokio::pin!(llm_future);
-                        tokio::pin!(filler_delay);
-
-                        tokio::select! {
-                            result = &mut llm_future => result?,
-                            _ = &mut filler_delay => {
-                                // LLM is slow — play a thinking filler while waiting.
-                                self.set_status(Status::Filling).await;
-                                if let Some(ref fillers) = self.config.fillers {
-                                    if let Some(pcm) = fillers.pick_random(FillerCategory::Thinking) {
-                                        self.sink.lock().await.push(pcm, self.config.sample_rate)?;
-                                    }
+                        let speculative_result = if let Some(handle) = speculative_handle {
+                            if should_commit_draft(&speculative_partial, &user_text) {
+                                // Partial matched — try to use the speculative result.
+                                match handle.await {
+                                    Ok(Ok(result)) => Some(result),
+                                    _ => None,
                                 }
-                                // Now wait for the LLM to finish.
-                                llm_future.await?
+                            } else {
+                                // Partial diverged — abort and call fresh.
+                                handle.abort();
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        if let Some(result) = speculative_result {
+                            result
+                        } else {
+                            // Fresh LLM call with filler race.
+                            let llm_future = self.call_llm_with_tools();
+                            let filler_delay = tokio::time::sleep(Duration::from_millis(700));
+                            tokio::pin!(llm_future);
+                            tokio::pin!(filler_delay);
+
+                            tokio::select! {
+                                result = &mut llm_future => result?,
+                                _ = &mut filler_delay => {
+                                    self.set_status(Status::Filling).await;
+                                    if let Some(ref fillers) = self.config.fillers {
+                                        if let Some(pcm) = fillers.pick_random(FillerCategory::Thinking) {
+                                            self.sink.lock().await.push(pcm, self.config.sample_rate)?;
+                                        }
+                                    }
+                                    llm_future.await?
+                                }
                             }
                         }
                     };

@@ -452,3 +452,129 @@ async fn slow_llm_triggers_thinking_filler_status() {
 
     assert_eq!(result, EndSignal::UserQuit);
 }
+
+#[tokio::test]
+async fn speculative_draft_commits_when_partial_matches_final() {
+    use conch::stt::TranscriptEvent;
+
+    // CountingLlm: opening + speculative + (unused) fallback
+    let llm = Arc::new(fakes::CountingLlm::new(vec![
+        "Welcome!".to_string(),
+        "Speculative reply used!".to_string(),
+        "Fresh reply -- should NOT appear".to_string(),
+    ]));
+    let call_count = llm.count.clone();
+
+    // PartialStt: emits a stable partial that triggers a speculative call,
+    // then a matching Final.
+    let stt = Arc::new(fakes::PartialStt::new(vec![vec![
+        fakes::ScriptedEvent {
+            delay: Duration::from_millis(100),
+            event: TranscriptEvent::Partial {
+                text: "I built this to learn audio".to_string(),
+                stability: 0.9,
+            },
+        },
+        // Second identical partial 1600ms later -- partial_stable_since has
+        // now elapsed > STABILITY_WINDOW_MS (1500ms), triggering speculative.
+        fakes::ScriptedEvent {
+            delay: Duration::from_millis(1600),
+            event: TranscriptEvent::Partial {
+                text: "I built this to learn audio".to_string(),
+                stability: 0.9,
+            },
+        },
+        // Final matching the partial (delivered after end_of_utterance).
+        fakes::ScriptedEvent {
+            delay: Duration::ZERO,
+            event: TranscriptEvent::Final {
+                text: "I built this to learn audio".to_string(),
+                words: vec![],
+            },
+        },
+    ]]));
+
+    let tts = Arc::new(fakes::FakeTts);
+    let sink = fakes::FakeSink::new();
+    let collected = sink.collected();
+
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Speculative Test".to_string(),
+        "brief".to_string(),
+    )));
+
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        ..OrchestratorConfig::default()
+    };
+
+    let orch = Orchestrator::new(
+        llm,
+        stt,
+        tts,
+        Box::new(sink),
+        state.clone(),
+        event_rx,
+        config,
+    );
+
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    // Wait for the opening to finish.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Start recording.
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+
+    // Wait for partial events to play out (100ms + 1600ms) plus a bit extra
+    // for the speculative call to be spawned and complete.
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+
+    // Stop recording.
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+
+    // Wait for the orchestrator to transcribe, commit draft, and speak.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Quit to end the session.
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(10), handle)
+        .await
+        .expect("timed out")
+        .expect("panicked")
+        .expect("error");
+
+    assert_eq!(result, EndSignal::UserQuit);
+
+    // The LLM should have been called exactly twice:
+    // 1. Opening
+    // 2. Speculative call (committed because partial == final)
+    // NOT a third time (fresh continuation).
+    let total_calls = call_count.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        total_calls, 2,
+        "speculative draft should be committed, avoiding a fresh LLM call; got {} calls",
+        total_calls
+    );
+
+    // The reply text in the history should be the speculative reply.
+    let history = state.read().await.history().to_vec();
+    let assistant_turns: Vec<&str> = history
+        .iter()
+        .filter(|t| matches!(t.speaker, conch::interview::history::Speaker::Conch))
+        .map(|t| t.text.as_str())
+        .collect();
+    assert!(
+        assistant_turns.contains(&"Speculative reply used!"),
+        "expected the speculative reply in history, got: {:?}",
+        assistant_turns
+    );
+
+    // Audio should have been played.
+    let pcm_len = collected.lock().unwrap().len();
+    assert!(pcm_len > 0, "audio sink should have received PCM data");
+}

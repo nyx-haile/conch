@@ -85,6 +85,32 @@ impl LlmCaller for FakeLlm {
 }
 
 // ---------------------------------------------------------------------------
+// CountingLlm — wraps FakeLlm and counts chat() invocations
+// ---------------------------------------------------------------------------
+
+pub struct CountingLlm {
+    inner: FakeLlm,
+    pub count: Arc<std::sync::atomic::AtomicU32>,
+}
+
+impl CountingLlm {
+    pub fn new(replies: Vec<String>) -> Self {
+        Self {
+            inner: FakeLlm::new(replies),
+            count: Arc::new(std::sync::atomic::AtomicU32::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl LlmCaller for CountingLlm {
+    async fn chat(&self, req: &ChatRequest) -> Result<ChatResponse> {
+        self.count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.inner.chat(req).await
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SlowLlm — wraps FakeLlm with configurable per-call delay
 // ---------------------------------------------------------------------------
 
@@ -270,6 +296,81 @@ impl TtsStream for SlowTtsStream {
 
     async fn abort(&mut self) -> Result<()> {
         self.aborted = true;
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// PartialStt — emits Partial events with timing, then Final events after
+// end_of_utterance. For speculative drafting tests.
+// ---------------------------------------------------------------------------
+
+/// A scripted STT event for PartialStt. Each event is emitted after a delay.
+#[derive(Debug)]
+pub struct ScriptedEvent {
+    pub delay: std::time::Duration,
+    pub event: TranscriptEvent,
+}
+
+pub struct PartialStt {
+    scripts: Mutex<Vec<Vec<ScriptedEvent>>>,
+}
+
+impl PartialStt {
+    pub fn new(scripts: Vec<Vec<ScriptedEvent>>) -> Self {
+        Self {
+            scripts: Mutex::new(scripts),
+        }
+    }
+}
+
+#[async_trait]
+impl SpeechToText for PartialStt {
+    async fn open_stream(&self, _config: &SttConfig) -> Result<Box<dyn SttStream>> {
+        let events = {
+            let mut q = self.scripts.lock().unwrap();
+            if q.is_empty() {
+                vec![]
+            } else {
+                q.remove(0)
+            }
+        };
+        Ok(Box::new(TimedSttStream {
+            events: events.into_iter().collect(),
+            end_signalled: false,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct TimedSttStream {
+    events: std::collections::VecDeque<ScriptedEvent>,
+    end_signalled: bool,
+}
+
+#[async_trait]
+impl SttStream for TimedSttStream {
+    async fn send_frame(&mut self, _pcm: &[i16]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn end_of_utterance(&mut self) -> Result<()> {
+        self.end_signalled = true;
+        Ok(())
+    }
+
+    async fn next_event(&mut self) -> Option<TranscriptEvent> {
+        // If end_of_utterance hasn't been called yet, yield pending events
+        // with their scripted delays. After end_of_utterance, yield remaining
+        // events immediately (so drain_final_text can collect them).
+        let se = self.events.pop_front()?;
+        if !self.end_signalled {
+            tokio::time::sleep(se.delay).await;
+        }
+        Some(se.event)
+    }
+
+    async fn close(&mut self) -> Result<()> {
         Ok(())
     }
 }
