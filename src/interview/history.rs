@@ -50,7 +50,8 @@ impl ConversationLog {
             Speaker::Conch => "Conch",
             Speaker::User => "You",
         };
-        writeln!(self.md, "**{}:** {}\n", label, turn.text).context("writing transcript.md")?;
+        let safe_text = turn.text.replace('\n', " ");
+        writeln!(self.md, "**{}:** {}\n", label, safe_text).context("writing transcript.md")?;
         self.md.flush().context("flushing transcript.md")?;
         self.turns.push(turn);
         self.write_json()?;
@@ -64,8 +65,11 @@ impl ConversationLog {
     fn write_json(&self) -> Result<()> {
         let bytes =
             serde_json::to_vec_pretty(&self.turns).context("serializing conversation")?;
-        std::fs::write(&self.json_path, bytes)
-            .with_context(|| format!("writing {}", self.json_path.display()))?;
+        let tmp = self.json_path.with_extension("json.tmp");
+        std::fs::write(&tmp, bytes)
+            .with_context(|| format!("writing {}", tmp.display()))?;
+        std::fs::rename(&tmp, &self.json_path)
+            .with_context(|| format!("renaming {} -> {}", tmp.display(), self.json_path.display()))?;
         Ok(())
     }
 
