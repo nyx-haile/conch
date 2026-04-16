@@ -46,6 +46,7 @@ async fn opening_then_one_turn_then_voice_command_end() {
         brand: None,
         max_tokens: 256,
         sample_rate: 16_000,
+        fillers: None,
     };
 
     let orch = Orchestrator::new(
@@ -372,6 +373,82 @@ async fn barge_in_interrupts_speaking_and_returns_to_idle() {
         .expect("orchestrator timed out")
         .expect("orchestrator panicked")
         .expect("orchestrator returned error");
+
+    assert_eq!(result, EndSignal::UserQuit);
+}
+
+#[tokio::test]
+async fn slow_llm_triggers_thinking_filler_status() {
+    // Opening is instant (first reply), but the continuation after a user
+    // turn takes 1.5s — well past the 700ms filler threshold.
+    let llm = Arc::new(fakes::SlowLlm::new(
+        vec![
+            "Welcome!".to_string(),
+            "Interesting answer.".to_string(),
+        ],
+        Duration::from_millis(1500),
+    ));
+
+    let stt = Arc::new(fakes::FakeStt::new(vec![
+        vec!["some user input".to_string()],
+    ]));
+    let tts = Arc::new(fakes::FakeTts);
+    let sink = fakes::FakeSink::new();
+
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Filler Test".to_string(),
+        "brief".to_string(),
+    )));
+
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        // No fillers cache — we just test that Status::Filling is reached.
+        ..OrchestratorConfig::default()
+    };
+
+    let orch = Orchestrator::new(
+        llm,
+        stt,
+        tts,
+        Box::new(sink),
+        state.clone(),
+        event_rx,
+        config,
+    );
+
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    // Wait for opening LLM call (1.5s) + speak to finish.
+    tokio::time::sleep(Duration::from_millis(1600)).await;
+
+    // Start a user turn.
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+
+    // After mic release the orchestrator enters Thinking, then after 700ms
+    // it should transition to Filling while the LLM is still working.
+    // Poll at ~900ms after mic-close to catch the Filling status.
+    tokio::time::sleep(Duration::from_millis(900)).await;
+    let mid_status = state.read().await.status();
+    assert_eq!(
+        mid_status,
+        Status::Filling,
+        "should reach Filling when LLM takes > 700ms"
+    );
+
+    // Wait for the LLM to finish, speak to complete, then quit.
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .expect("timed out")
+        .expect("panicked")
+        .expect("error");
 
     assert_eq!(result, EndSignal::UserQuit);
 }

@@ -85,6 +85,32 @@ impl LlmCaller for FakeLlm {
 }
 
 // ---------------------------------------------------------------------------
+// SlowLlm — wraps FakeLlm with configurable per-call delay
+// ---------------------------------------------------------------------------
+
+pub struct SlowLlm {
+    inner: FakeLlm,
+    delay: std::time::Duration,
+}
+
+impl SlowLlm {
+    pub fn new(replies: Vec<String>, delay: std::time::Duration) -> Self {
+        Self {
+            inner: FakeLlm::new(replies),
+            delay,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmCaller for SlowLlm {
+    async fn chat(&self, req: &ChatRequest) -> Result<ChatResponse> {
+        tokio::time::sleep(self.delay).await;
+        self.inner.chat(req).await
+    }
+}
+
+// ---------------------------------------------------------------------------
 // FakeStt — returns scripted Final events per open_stream call
 // ---------------------------------------------------------------------------
 

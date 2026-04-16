@@ -1,4 +1,5 @@
 use crate::audio::output::AudioSink;
+use crate::interview::fillers::{FillerCache, FillerCategory};
 use crate::interview::history::Speaker;
 use crate::interview::intent::{detect_end_command, end_session_tool};
 use crate::interview::prompt::compose_system_prompt;
@@ -11,6 +12,7 @@ use crate::tts::{TextToSpeech, TtsConfig};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::{mpsc, RwLock, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,9 @@ pub struct OrchestratorConfig {
     pub brand: Option<String>,
     pub max_tokens: u32,
     pub sample_rate: u32,
+    /// Pre-rendered filler audio for thinking pauses and interruptions.
+    /// When `None`, no filler audio is played.
+    pub fillers: Option<FillerCache>,
 }
 
 impl Default for OrchestratorConfig {
@@ -77,6 +82,7 @@ impl Default for OrchestratorConfig {
             brand: None,
             max_tokens: 512,
             sample_rate: 16_000,
+            fillers: None,
         }
     }
 }
@@ -253,8 +259,28 @@ impl Orchestrator {
                         return Ok(EndSignal::VoiceCommand);
                     }
 
-                    // ---- LLM continuation ----
-                    let (reply, tool_calls) = self.call_llm_with_tools().await?;
+                    // ---- LLM continuation (with filler race) ----
+                    let (reply, tool_calls) = {
+                        let llm_future = self.call_llm_with_tools();
+                        let filler_delay = tokio::time::sleep(Duration::from_millis(700));
+                        tokio::pin!(llm_future);
+                        tokio::pin!(filler_delay);
+
+                        tokio::select! {
+                            result = &mut llm_future => result?,
+                            _ = &mut filler_delay => {
+                                // LLM is slow — play a thinking filler while waiting.
+                                self.set_status(Status::Filling).await;
+                                if let Some(ref fillers) = self.config.fillers {
+                                    if let Some(pcm) = fillers.pick_random(FillerCategory::Thinking) {
+                                        self.sink.lock().await.push(pcm, self.config.sample_rate)?;
+                                    }
+                                }
+                                // Now wait for the LLM to finish.
+                                llm_future.await?
+                            }
+                        }
+                    };
 
                     // Check if LLM invoked end_session tool.
                     if let Some(reason) = Self::extract_end_session(&tool_calls) {
