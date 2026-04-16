@@ -109,12 +109,27 @@ impl Orchestrator {
         // Build the system prompt and seed the message history.
         let system = compose_system_prompt(&self.config.brief, self.config.brand.as_deref());
         self.messages.push(Message::system(system));
-        self.messages.push(Message::user(
-            "Begin the interview. Greet the user and ask your first question.",
-        ));
 
         // ---- Opening turn ----
-        let opening = self.call_llm().await?;
+        // Use a temporary seed message for the opening call only — don't persist
+        // it in self.messages, as it would appear as a ghost user utterance.
+        let opening = {
+            let mut seed = self.messages.clone();
+            seed.push(Message::user(
+                "Begin the interview. Greet the user and ask your first question.",
+            ));
+            let req = ChatRequest {
+                model: self.config.model.clone(),
+                messages: seed,
+                max_tokens: self.config.max_tokens,
+                tools: vec![],
+            };
+            let resp = self.llm.chat(&req).await?;
+            resp.choices
+                .first()
+                .and_then(|c| c.message.content.clone())
+                .unwrap_or_default()
+        };
         self.commit_assistant_turn(&opening).await;
         self.speak(&opening).await?;
 
@@ -187,11 +202,25 @@ impl Orchestrator {
 
                     // ---- Check voice end command ----
                     if detect_end_command(&user_text) {
-                        // Ask LLM for a closing line.
-                        self.messages.push(Message::user(
-                            "The user wants to wrap up. Give a brief, warm closing.",
-                        ));
-                        let closing = self.call_llm().await?;
+                        // Ask LLM for a closing line using a temporary directive
+                        // so we don't inject two consecutive user messages into history.
+                        let closing = {
+                            let mut closing_msgs = self.messages.clone();
+                            closing_msgs.push(Message::user(
+                                "The user wants to wrap up. Give a brief, warm closing.",
+                            ));
+                            let req = ChatRequest {
+                                model: self.config.model.clone(),
+                                messages: closing_msgs,
+                                max_tokens: self.config.max_tokens,
+                                tools: vec![],
+                            };
+                            let resp = self.llm.chat(&req).await?;
+                            resp.choices
+                                .first()
+                                .and_then(|c| c.message.content.clone())
+                                .unwrap_or_default()
+                        };
                         self.commit_assistant_turn(&closing).await;
                         self.speak(&closing).await?;
                         self.set_status(Status::Closing).await;
@@ -247,23 +276,6 @@ impl Orchestrator {
             speaker: Speaker::Conch,
             text: text.to_string(),
         });
-    }
-
-    /// Call the LLM without tools (for opening / closing turns).
-    async fn call_llm(&self) -> Result<String> {
-        let req = ChatRequest {
-            model: self.config.model.clone(),
-            messages: self.messages.clone(),
-            max_tokens: self.config.max_tokens,
-            tools: vec![],
-        };
-        let resp = self.llm.chat(&req).await?;
-        let text = resp
-            .choices
-            .first()
-            .and_then(|c| c.message.content.clone())
-            .unwrap_or_default();
-        Ok(text)
     }
 
     /// Call the LLM with the `end_session` tool. Returns (text, tool_calls).
