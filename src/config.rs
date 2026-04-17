@@ -32,6 +32,10 @@ impl FromStr for TtsBackend {
     }
 }
 
+/// Rachel — a safe, widely-available default voice. Override via
+/// `CONCH_ELEVEN_VOICE_ID` once you've picked a voice from VoiceLab.
+const DEFAULT_ELEVEN_VOICE_ID: &str = "21m00Tcm4TlvDq8ikWAM";
+
 #[derive(Debug, Clone)]
 pub struct Config {
     home: PathBuf,
@@ -39,6 +43,7 @@ pub struct Config {
     anthropic_api_key: Option<String>,
     deepgram_api_key: Option<String>,
     elevenlabs_api_key: Option<String>,
+    elevenlabs_voice_id: Option<String>,
     github_token: Option<String>,
     provider: Option<Provider>,
     stt_backend: SttBackend,
@@ -53,10 +58,11 @@ impl Config {
             anthropic_api_key: None,
             deepgram_api_key: None,
             elevenlabs_api_key: None,
+            elevenlabs_voice_id: None,
             github_token: None,
             provider: None,
             stt_backend: SttBackend::Deepgram,
-            tts_backend: TtsBackend::ElevenLabs,
+            tts_backend: TtsBackend::Local,
         }
     }
 
@@ -69,6 +75,9 @@ impl Config {
     pub fn anthropic_api_key(&self) -> Option<&str> { self.anthropic_api_key.as_deref() }
     pub fn deepgram_api_key(&self) -> Option<&str> { self.deepgram_api_key.as_deref() }
     pub fn elevenlabs_api_key(&self) -> Option<&str> { self.elevenlabs_api_key.as_deref() }
+    pub fn elevenlabs_voice_id(&self) -> &str {
+        self.elevenlabs_voice_id.as_deref().unwrap_or(DEFAULT_ELEVEN_VOICE_ID)
+    }
     pub fn github_token(&self) -> Option<&str> { self.github_token.as_deref() }
 
     pub fn provider(&self) -> Result<Provider> {
@@ -83,13 +92,14 @@ impl Config {
     pub fn from_env_map(home: &Path, env: &std::collections::HashMap<String, String>) -> Result<Self> {
         let provider = match env.get("CONCH_PROVIDER") { Some(v) => Some(v.parse::<Provider>()?), None => None };
         let stt_backend = match env.get("CONCH_STT") { Some(v) => v.parse()?, None => SttBackend::Deepgram };
-        let tts_backend = match env.get("CONCH_TTS") { Some(v) => v.parse()?, None => TtsBackend::ElevenLabs };
+        let tts_backend = match env.get("CONCH_TTS") { Some(v) => v.parse()?, None => TtsBackend::Local };
         Ok(Self {
             home: home.to_path_buf(),
             openrouter_api_key: env.get("OPENROUTER_API_KEY").cloned(),
             anthropic_api_key: env.get("ANTHROPIC_API_KEY").cloned(),
             deepgram_api_key: env.get("DEEPGRAM_API_KEY").cloned(),
             elevenlabs_api_key: env.get("ELEVENLABS_API_KEY").cloned(),
+            elevenlabs_voice_id: env.get("CONCH_ELEVEN_VOICE_ID").cloned(),
             github_token: env.get("GITHUB_TOKEN").cloned(),
             provider,
             stt_backend,

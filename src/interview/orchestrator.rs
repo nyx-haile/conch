@@ -562,6 +562,7 @@ impl Orchestrator {
         let mut stream = self.tts.open_stream(&tts_config).await?;
         stream.push_text(text).await?;
         stream.end_of_input().await?;
+        let tts_rate = stream.sample_rate();
 
         let outcome;
         loop {
@@ -569,7 +570,7 @@ impl Orchestrator {
                 chunk = stream.next_chunk() => {
                     match chunk {
                         Some(pcm) => {
-                            self.sink.lock().await.push(pcm, self.config.sample_rate)?;
+                            self.sink.lock().await.push(pcm, tts_rate)?;
                         }
                         None => {
                             outcome = SpeakOutcome::Completed;

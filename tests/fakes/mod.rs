@@ -249,6 +249,10 @@ impl TtsStream for EmptyTtsStream {
     async fn abort(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn sample_rate(&self) -> u32 {
+        16_000
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -304,6 +308,10 @@ impl TtsStream for SlowTtsStream {
     async fn abort(&mut self) -> Result<()> {
         self.aborted = true;
         Ok(())
+    }
+
+    fn sample_rate(&self) -> u32 {
+        16_000
     }
 }
 

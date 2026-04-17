@@ -80,7 +80,7 @@ fn config_defaults_backends_when_env_missing() {
     let env = std::collections::HashMap::new();
     let config = Config::from_env_map(&home, &env).unwrap();
     assert_eq!(config.stt_backend(), SttBackend::Deepgram);
-    assert_eq!(config.tts_backend(), TtsBackend::ElevenLabs);
+    assert_eq!(config.tts_backend(), TtsBackend::Local);
 }
 
 #[test]

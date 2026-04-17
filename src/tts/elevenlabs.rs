@@ -156,4 +156,10 @@ impl TtsStream for ElevenLabsStream {
         let _ = self.ws.close(None).await;
         Ok(())
     }
+
+    fn sample_rate(&self) -> u32 {
+        // ElevenLabs stream default is mp3_44100_128. If we ever configure
+        // output_format differently (e.g. in stream_url), update here.
+        44_100
+    }
 }

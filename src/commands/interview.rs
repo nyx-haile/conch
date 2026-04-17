@@ -57,7 +57,8 @@ pub async fn run(
                 .elevenlabs_api_key()
                 .context("ELEVENLABS_API_KEY required for elevenlabs TTS backend")?;
             Arc::new(crate::tts::elevenlabs::ElevenLabsTts::production(
-                key, "default",
+                key,
+                config.elevenlabs_voice_id(),
             ))
         }
         TtsBackend::Text => {
@@ -67,7 +68,13 @@ pub async fn run(
             let (tts, _rx) = crate::tts::text::TextTts::new();
             Arc::new(tts)
         }
-        TtsBackend::Local => Arc::new(crate::tts::local::LocalTts::new()),
+        TtsBackend::Local => {
+            let home = directories::UserDirs::new()
+                .context("determining home directory for piper voice lookup")?
+                .home_dir()
+                .to_path_buf();
+            Arc::new(crate::tts::local::LocalTts::from_env(&home)?)
+        }
     };
 
     let headless = std::env::var("CONCH_HEADLESS").is_ok();

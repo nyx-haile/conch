@@ -50,4 +50,8 @@ impl TtsStream for TextTtsStream {
     async fn abort(&mut self) -> Result<()> {
         Ok(())
     }
+
+    fn sample_rate(&self) -> u32 {
+        16_000
+    }
 }

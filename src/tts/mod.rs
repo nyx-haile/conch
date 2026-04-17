@@ -22,4 +22,8 @@ pub trait TtsStream: Send + std::fmt::Debug {
     async fn end_of_input(&mut self) -> Result<()>;
     async fn next_chunk(&mut self) -> Option<Vec<i16>>;
     async fn abort(&mut self) -> Result<()>;
+    /// Sample rate of the PCM returned by `next_chunk`. Backends know this
+    /// from their voice config (piper), stream output format (ElevenLabs),
+    /// or trivially (text mode).
+    fn sample_rate(&self) -> u32;
 }
