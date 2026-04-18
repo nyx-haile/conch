@@ -92,6 +92,14 @@ impl MicGateHandle {
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+/// Minimum interval between cpal input error log lines.
+///
+/// ALSA/PipeWire xruns can fire the stream error callback hundreds of times
+/// per second during the first moments of stream startup. Without a rate
+/// limit the log flood either corrupts the TUI (stderr paints over frames)
+/// or drowns out every other diagnostic.
+const INPUT_ERR_LOG_INTERVAL: Duration = Duration::from_millis(500);
+
 /// CPAL-backed mic source at 16 kHz mono s16.
 ///
 /// `cpal::Stream` is not `Send` on all platforms, so the stream is owned by a
@@ -155,6 +163,12 @@ fn build_cpal_input_stream(
     let mut buf: Vec<i16> = Vec::with_capacity(samples_per_frame_device);
 
     let config: cpal::StreamConfig = supported.into();
+
+    // Rate-limit err_callback log spam. Stored as millis-since-UNIX_EPOCH in
+    // an AtomicU64 so the closure stays Send + 'static. `0` == "never logged".
+    let last_err_log_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let err_suppressed = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
     let stream = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
@@ -189,7 +203,34 @@ fn build_cpal_input_stream(
                 }
             }
         },
-        |e| tracing::error!("cpal input stream error: {e}"),
+        {
+            let last_err_log_ms = Arc::clone(&last_err_log_ms);
+            let err_suppressed = Arc::clone(&err_suppressed);
+            move |e| {
+                use std::sync::atomic::Ordering::Relaxed;
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let now_ms = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let last = last_err_log_ms.load(Relaxed);
+                if now_ms.saturating_sub(last) >= INPUT_ERR_LOG_INTERVAL.as_millis() as u64 {
+                    let suppressed = err_suppressed.swap(0, Relaxed);
+                    last_err_log_ms.store(now_ms, Relaxed);
+                    if suppressed > 0 {
+                        tracing::error!(
+                            suppressed,
+                            "cpal input stream error: {e} (+{suppressed} suppressed in last {}ms)",
+                            INPUT_ERR_LOG_INTERVAL.as_millis()
+                        );
+                    } else {
+                        tracing::error!("cpal input stream error: {e}");
+                    }
+                } else {
+                    err_suppressed.fetch_add(1, Relaxed);
+                }
+            }
+        },
         None,
     )?;
     stream.play()?;
