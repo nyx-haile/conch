@@ -54,8 +54,16 @@ async fn main() -> anyhow::Result<()> {
                 std::env::set_var("CONCH_HEADLESS", "1");
             }
             let config = conch::config::Config::load()?;
+            // `test` is headless/no-mic, so STT is always scripted (Local).
+            // TTS defaults to Text for a silent smoke test; set CONCH_TTS=local
+            // to hear piper produce audio.
+            let tts = std::env::var("CONCH_TTS")
+                .ok()
+                .map(|s| s.parse())
+                .transpose()?
+                .unwrap_or(conch::config::TtsBackend::Text);
             let config = config
-                .with_tts_backend(conch::config::TtsBackend::Text)
+                .with_tts_backend(tts)
                 .with_stt_backend(conch::config::SttBackend::Local);
             let cwd = std::env::current_dir()?;
             let label = cwd

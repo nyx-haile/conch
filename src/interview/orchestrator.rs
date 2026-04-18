@@ -1,3 +1,4 @@
+use crate::audio::input::{Frame, MicGateHandle};
 use crate::audio::output::AudioSink;
 use crate::interview::fillers::{FillerCache, FillerCategory};
 use crate::interview::history::{ConversationLog, Speaker, Turn};
@@ -14,7 +15,25 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, RwLock, Mutex};
+use tokio::sync::{broadcast, mpsc, Mutex, RwLock};
+
+/// Rolling waveform buffer size — ~1.3s at 50 frames/sec (20ms frames).
+const WAVEFORM_WINDOW: usize = 64;
+
+/// RMS level of a PCM frame, normalized to `[0.0, 1.0]`.
+fn frame_rms(pcm: &[i16]) -> f32 {
+    if pcm.is_empty() {
+        return 0.0;
+    }
+    let sum_sq: f64 = pcm
+        .iter()
+        .map(|&s| {
+            let f = s as f64 / i16::MAX as f64;
+            f * f
+        })
+        .sum();
+    (sum_sq / pcm.len() as f64).sqrt() as f32
+}
 
 // ---------------------------------------------------------------------------
 // LlmCaller trait — abstracts LlmClient for testability
@@ -103,6 +122,10 @@ pub struct Orchestrator {
     messages: Vec<Message>,
     log: Option<ConversationLog>,
     start_time: Instant,
+    /// Mic frame receiver; None = no real mic (tests, headless).
+    mic_rx: Option<broadcast::Receiver<Frame>>,
+    /// Opens/closes the mic gate around the record phase.
+    mic_gate: Option<MicGateHandle>,
 }
 
 impl Orchestrator {
@@ -126,12 +149,26 @@ impl Orchestrator {
             messages: Vec::new(),
             log: None,
             start_time: Instant::now(),
+            mic_rx: None,
+            mic_gate: None,
         }
     }
 
     /// Attach a conversation log for persisting turns to disk.
     pub fn with_log(mut self, log: ConversationLog) -> Self {
         self.log = Some(log);
+        self
+    }
+
+    /// Wire a live mic source. Frames are forwarded to STT during record
+    /// phases and used to drive the TUI waveform meter.
+    pub fn with_mic(
+        mut self,
+        rx: broadcast::Receiver<Frame>,
+        gate: MicGateHandle,
+    ) -> Self {
+        self.mic_rx = Some(rx);
+        self.mic_gate = Some(gate);
         self
     }
 
@@ -207,6 +244,17 @@ impl Orchestrator {
                     };
                     let mut stt_stream = self.stt.open_stream(&stt_config).await?;
 
+                    // Live mic: fresh subscription so no pre-phase backlog
+                    // leaks into STT. Gate is opened here and closed at phase
+                    // end; CpalMicSource keeps running between phases but the
+                    // gate suppresses frames when the user hasn't pressed mic.
+                    let mut mic_rx = self.mic_rx.as_ref().map(|rx| rx.resubscribe());
+                    if let Some(gate) = &self.mic_gate {
+                        gate.set_open(true);
+                    }
+                    let mut wf_ring: std::collections::VecDeque<f32> =
+                        std::collections::VecDeque::with_capacity(WAVEFORM_WINDOW);
+
                     // Speculative drafting state: track stable partials
                     // and optionally kick off a background LLM call.
                     let mut last_partial_text = String::new();
@@ -234,6 +282,27 @@ impl Orchestrator {
                                         None => break true,
                                     }
                                 }
+                                frame_opt = async {
+                                    match mic_rx.as_mut() {
+                                        Some(rx) => rx.recv().await.ok(),
+                                        None => std::future::pending::<Option<Frame>>().await,
+                                    }
+                                } => {
+                                    if let Some(f) = frame_opt {
+                                        if let Err(e) = stt_stream.send_frame(&f.pcm).await {
+                                            tracing::warn!(err=%e, "stt send_frame failed");
+                                        }
+                                        let level = frame_rms(&f.pcm);
+                                        if wf_ring.len() >= WAVEFORM_WINDOW {
+                                            wf_ring.pop_front();
+                                        }
+                                        wf_ring.push_back(level);
+                                        self.state
+                                            .write()
+                                            .await
+                                            .set_waveform(wf_ring.iter().copied().collect());
+                                    }
+                                }
                                 stt_event = stt_stream.next_event() => {
                                     match stt_event {
                                         Some(TranscriptEvent::Partial { text, stability }) => {
@@ -248,6 +317,11 @@ impl Orchestrator {
                                             } else if is_stable && partial_stable_since.is_none() {
                                                 partial_stable_since = Some(Instant::now());
                                             }
+                                            // Live feedback: show partial in TUI.
+                                            self.state
+                                                .write()
+                                                .await
+                                                .update_current_user_draft(&last_partial_text);
 
                                             // Check whether we should launch a speculative call.
                                             if speculative_handle.is_none() && !last_partial_text.is_empty() {
@@ -302,6 +376,16 @@ impl Orchestrator {
                             }
                         }
                     };
+
+                    // Close mic gate + clear live UI feedback before moving on.
+                    if let Some(gate) = &self.mic_gate {
+                        gate.set_open(false);
+                    }
+                    {
+                        let mut st = self.state.write().await;
+                        st.set_waveform(Vec::new());
+                        st.update_current_user_draft("");
+                    }
 
                     if stopped {
                         if let Some(h) = speculative_handle {

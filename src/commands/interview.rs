@@ -106,10 +106,34 @@ pub async fn run(
     };
 
     let llm_caller: Arc<dyn LlmCaller> = Arc::new(client);
-    let orch = Orchestrator::new(
+    let mut orch = Orchestrator::new(
         llm_caller, stt, tts, sink, state.clone(), event_rx, orch_config,
     )
     .with_log(log);
+
+    // Live mic capture (non-headless only — cpal can't open devices in
+    // sandboxes/CI). Broadcast so STT and future consumers can share frames.
+    if !headless {
+        match crate::audio::input::CpalMicSource::new_default(20) {
+            Ok(mic) => {
+                let (mic_tx, mic_rx) = tokio::sync::broadcast::channel::<
+                    crate::audio::input::Frame,
+                >(256);
+                let gate =
+                    crate::audio::input::MicGate::new(Box::new(mic), mic_tx);
+                let handle = gate.toggle_handle();
+                tokio::spawn(async move {
+                    if let Err(e) = gate.run().await {
+                        tracing::warn!(err = %e, "mic gate exited with error");
+                    }
+                });
+                orch = orch.with_mic(mic_rx, handle);
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "mic unavailable; continuing without live capture");
+            }
+        }
+    }
 
     if headless {
         // Auto-drive: send mic toggle events to simulate a conversation
