@@ -157,12 +157,33 @@ fn build_cpal_input_stream(
     let supported = device.default_input_config()?;
     let device_rate = supported.sample_rate().0;
     let device_channels = supported.channels();
+    let buffer_range = *supported.buffer_size();
 
     let samples_per_frame_device = ((device_rate as u64 * frame_ms as u64) / 1000) as usize
         * device_channels as usize;
     let mut buf: Vec<i16> = Vec::with_capacity(samples_per_frame_device);
 
-    let config: cpal::StreamConfig = supported.into();
+    // Explicit buffer size targeting ~30 ms of audio. cpal's default leaves
+    // BufferSize::Default which under PipeWire's ALSA-PCM compat plugin
+    // (and under PulseAudio's ALSA bridge) often picks a window so small
+    // that the kernel raises POLLERR continuously. ~30 ms is a sweet spot:
+    // big enough to ride out scheduler jitter, small enough to keep partial
+    // STT latency low.
+    const TARGET_BUFFER_MS: u32 = 30;
+    let mut config: cpal::StreamConfig = supported.into();
+    config.buffer_size = match buffer_range {
+        cpal::SupportedBufferSize::Range { min, max } => {
+            let target = (device_rate / 1000) * TARGET_BUFFER_MS;
+            cpal::BufferSize::Fixed(target.clamp(min, max))
+        }
+        cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Default,
+    };
+    tracing::debug!(
+        rate = device_rate,
+        channels = device_channels,
+        buffer_size = ?config.buffer_size,
+        "cpal input stream config"
+    );
 
     // Rate-limit err_callback log spam. Stored as millis-since-UNIX_EPOCH in
     // an AtomicU64 so the closure stays Send + 'static. `0` == "never logged".
