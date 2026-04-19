@@ -52,6 +52,12 @@ async fn main() -> anyhow::Result<()> {
             #[allow(unused_unsafe)]
             unsafe {
                 std::env::set_var("CONCH_HEADLESS", "1");
+                // The Local STT backend is only useful in test mode when it
+                // returns a scripted final transcript. Auto-drive expects
+                // exactly one final ending the session via the wrap command.
+                if std::env::var_os("CONCH_TEST_SCRIPTED_STT_FINALS").is_none() {
+                    std::env::set_var("CONCH_TEST_SCRIPTED_STT_FINALS", "that's a wrap");
+                }
             }
             let config = conch::config::Config::load()?;
             // `test` is headless/no-mic, so STT is always scripted (Local).
