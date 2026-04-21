@@ -35,9 +35,11 @@ use conch::interview::tui::keys::{translate_key, UserEvent};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[test]
-fn space_toggles_mic() {
+fn space_not_translated_here() {
+    // Space is driven by a press/release state machine inside the key reader
+    // (push-to-talk), not by translate_key.
     let e = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
-    assert_eq!(translate_key(&e), Some(UserEvent::MicToggle));
+    assert_eq!(translate_key(&e), None);
 }
 
 #[test]

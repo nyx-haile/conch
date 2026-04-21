@@ -8,16 +8,14 @@ pub enum UserEvent {
     Quit,
 }
 
+/// Translate a non-space key event. Space-bar handling lives in the key reader
+/// because it drives a press/release state machine (push-to-talk).
 pub fn translate_key(event: &KeyEvent) -> Option<UserEvent> {
-    // Ignore Repeat/Release. On terminals with the Kitty keyboard protocol
-    // enabled, OS auto-repeat surfaces as KeyEventKind::Repeat; filtering it
-    // here keeps a held key from re-toggling the mic.
     if event.kind != KeyEventKind::Press {
         return None;
     }
     match (event.code, event.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => Some(UserEvent::Quit),
-        (KeyCode::Char(' '), _) => Some(UserEvent::MicToggle),
         (KeyCode::Esc, _) => Some(UserEvent::Interrupt),
         _ => None,
     }
@@ -38,26 +36,40 @@ mod tests {
     }
 
     #[test]
-    fn press_space_yields_mic_toggle() {
+    fn space_not_translated_here() {
         assert_eq!(
             translate_key(&key(KeyCode::Char(' '), KeyEventKind::Press)),
-            Some(UserEvent::MicToggle)
-        );
-    }
-
-    #[test]
-    fn repeat_space_ignored() {
-        assert_eq!(
-            translate_key(&key(KeyCode::Char(' '), KeyEventKind::Repeat)),
             None
         );
     }
 
     #[test]
-    fn release_space_ignored() {
+    fn ctrl_c_yields_quit() {
+        let k = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Press,
+            state: KeyEventState::NONE,
+        };
+        assert_eq!(translate_key(&k), Some(UserEvent::Quit));
+    }
+
+    #[test]
+    fn esc_yields_interrupt() {
         assert_eq!(
-            translate_key(&key(KeyCode::Char(' '), KeyEventKind::Release)),
-            None
+            translate_key(&key(KeyCode::Esc, KeyEventKind::Press)),
+            Some(UserEvent::Interrupt)
         );
+    }
+
+    #[test]
+    fn release_ignored() {
+        let k = KeyEvent {
+            code: KeyCode::Char('c'),
+            modifiers: KeyModifiers::CONTROL,
+            kind: KeyEventKind::Release,
+            state: KeyEventState::NONE,
+        };
+        assert_eq!(translate_key(&k), None);
     }
 }

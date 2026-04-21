@@ -159,11 +159,20 @@ pub async fn run(
     Ok(())
 }
 
-/// RAII guard that restores the terminal on drop (raw mode + alternate screen).
-struct TerminalGuard;
+/// RAII guard that restores the terminal on drop (raw mode + alternate screen,
+/// plus popping any kitty keyboard-enhancement flags we pushed).
+struct TerminalGuard {
+    pop_keyboard_flags: bool,
+}
 
 impl Drop for TerminalGuard {
     fn drop(&mut self) {
+        if self.pop_keyboard_flags {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::PopKeyboardEnhancementFlags
+            );
+        }
         let _ = crossterm::terminal::disable_raw_mode();
         let _ = crossterm::execute!(std::io::stdout(), crossterm::terminal::LeaveAlternateScreen);
     }
@@ -175,19 +184,38 @@ async fn run_tui(
     event_tx: mpsc::Sender<UserEvent>,
 ) -> anyhow::Result<()> {
     use crate::interview::tui::widgets::render_frame;
-    use crossterm::terminal::{enable_raw_mode, EnterAlternateScreen};
+    use crossterm::event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags};
+    use crossterm::terminal::{enable_raw_mode, supports_keyboard_enhancement, EnterAlternateScreen};
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
 
     enable_raw_mode()?;
     crossterm::execute!(std::io::stdout(), EnterAlternateScreen)?;
+
+    // Push kitty-protocol flags so we receive KeyEventKind::Release. Silently
+    // fall back to legacy tap-toggle if the terminal does not support it.
+    let hold_mode = supports_keyboard_enhancement().unwrap_or(false);
+    let mut pop_keyboard_flags = false;
+    if hold_mode {
+        if crossterm::execute!(
+            std::io::stdout(),
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
+        )
+        .is_ok()
+        {
+            pop_keyboard_flags = true;
+        }
+    }
     // Guard ensures cleanup even if we bail via `?` below.
-    let _guard = TerminalGuard;
+    let _guard = TerminalGuard { pop_keyboard_flags };
 
     let backend = CrosstermBackend::new(std::io::stdout());
     let mut term = Terminal::new(backend)?;
 
-    let key_handle = tokio::spawn(crate::interview::tui::spawn_key_reader(event_tx));
+    let key_handle = tokio::spawn(crate::interview::tui::spawn_key_reader(
+        event_tx,
+        pop_keyboard_flags,
+    ));
     let orch_handle = tokio::spawn(orch.run());
     let start = std::time::Instant::now();
 
