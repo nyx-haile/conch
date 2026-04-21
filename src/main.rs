@@ -19,18 +19,51 @@ fn apply_overrides(
     Ok(config)
 }
 
+fn is_tui_command(cmd: &Command) -> bool {
+    matches!(cmd, Command::Sketch(_) | Command::Talk(_) | Command::Chronicle(_))
+}
+
+fn init_tracing(tui: bool) -> Option<tracing_appender::non_blocking::WorkerGuard> {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("conch=info"));
+
+    if tui {
+        let logs_dir = dirs_home()
+            .map(|h| h.join(".conch").join("logs"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".conch/logs"));
+        if let Err(e) = std::fs::create_dir_all(&logs_dir) {
+            // Fall back to stderr if we can't make the dir.
+            eprintln!("conch: could not create log dir {}: {e}", logs_dir.display());
+            tracing_subscriber::fmt().with_env_filter(filter).init();
+            return None;
+        }
+        let file_appender = tracing_appender::rolling::daily(&logs_dir, "conch.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+        tracing_subscriber::fmt()
+            .with_env_filter(filter)
+            .with_writer(non_blocking)
+            .with_ansi(false)
+            .init();
+        Some(guard)
+    } else {
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+        None
+    }
+}
+
+fn dirs_home() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").map(std::path::PathBuf::from)
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = dotenvy::dotenv();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("conch=info")),
-        )
-        .init();
-
     let cli = Cli::parse();
+    let headless = std::env::var_os("CONCH_HEADLESS").is_some();
+    let tui = is_tui_command(&cli.command) && !headless;
+    let _log_guard = init_tracing(tui);
+
     match cli.command {
         Command::Sketch(args) => {
             let config = conch::config::Config::load()?;
