@@ -14,6 +14,8 @@ use tokio::sync::mpsc;
 
 /// 560 ms at 16 kHz. Parakeet's streaming chunk size.
 const CHUNK_SAMPLES: usize = 8960;
+const PROGRESS_REPORT_PERCENT_STEP: u64 = 5;
+const PROGRESS_REPORT_BYTES_STEP: u64 = 8 * 1024 * 1024;
 
 /// Files the Nemotron int8 bundle expects on disk.
 const MODEL_FILES: &[(&str, &str)] = &[
@@ -78,12 +80,7 @@ impl SpeechToText for LocalStt {
 
         ensure_model(&self.model_dir, self.auto_download)
             .await
-            .with_context(|| {
-                format!(
-                    "preparing parakeet model at {}",
-                    self.model_dir.display()
-                )
-            })?;
+            .with_context(|| format!("preparing parakeet model at {}", self.model_dir.display()))?;
 
         let model_dir = self.model_dir.clone();
         let (cmd_tx, cmd_rx) = mpsc::channel::<SttCommand>(64);
@@ -117,10 +114,7 @@ impl std::fmt::Debug for ParakeetStream {
 #[async_trait]
 impl SttStream for ParakeetStream {
     async fn send_frame(&mut self, pcm: &[i16]) -> Result<()> {
-        let samples: Vec<f32> = pcm
-            .iter()
-            .map(|&s| s as f32 / i16::MAX as f32)
-            .collect();
+        let samples: Vec<f32> = pcm.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
         self.cmd_tx
             .send(SttCommand::Audio(samples))
             .await
@@ -261,33 +255,148 @@ async fn ensure_model(model_dir: &Path, auto_download: bool) -> Result<()> {
             continue;
         }
         tracing::info!(file = %name, "downloading parakeet model file");
-        eprintln!("conch: downloading parakeet model file {name}…");
         let tmp = dest.with_extension("partial");
         let _ = tokio::fs::remove_file(&tmp).await;
-        download_to(&client, url, &tmp)
+        download_to(&client, url, &tmp, name)
             .await
             .with_context(|| format!("downloading {url}"))?;
-        tokio::fs::rename(&tmp, &dest).await.with_context(|| {
-            format!(
-                "installing {} -> {}",
-                tmp.display(),
-                dest.display()
-            )
-        })?;
+        tokio::fs::rename(&tmp, &dest)
+            .await
+            .with_context(|| format!("installing {} -> {}", tmp.display(), dest.display()))?;
     }
     Ok(())
 }
 
-async fn download_to(client: &reqwest::Client, url: &str, dest: &Path) -> Result<()> {
+async fn download_to(client: &reqwest::Client, url: &str, dest: &Path, name: &str) -> Result<()> {
+    download_to_with_progress(client, url, dest, name, |line| eprintln!("{line}")).await
+}
+
+async fn download_to_with_progress<F>(
+    client: &reqwest::Client,
+    url: &str,
+    dest: &Path,
+    name: &str,
+    mut emit: F,
+) -> Result<()>
+where
+    F: FnMut(String),
+{
     use tokio::io::AsyncWriteExt;
 
     let mut resp = client.get(url).send().await?.error_for_status()?;
+    let mut reporter = DownloadProgressReporter::new(name, resp.content_length());
+    emit(reporter.start_message());
     let mut file = tokio::fs::File::create(dest).await?;
+    let mut downloaded = 0u64;
     while let Some(chunk) = resp.chunk().await? {
         file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
+        if let Some(line) = reporter.observe(downloaded) {
+            emit(line);
+        }
     }
     file.flush().await?;
+    if let Some(line) = reporter.finish(downloaded) {
+        emit(line);
+    }
     Ok(())
+}
+
+struct DownloadProgressReporter<'a> {
+    name: &'a str,
+    total_bytes: Option<u64>,
+    last_reported: u64,
+}
+
+impl<'a> DownloadProgressReporter<'a> {
+    fn new(name: &'a str, total_bytes: Option<u64>) -> Self {
+        Self {
+            name,
+            total_bytes,
+            last_reported: 0,
+        }
+    }
+
+    fn start_message(&self) -> String {
+        match self.total_bytes {
+            Some(total) if total > 0 => format!(
+                "conch: downloading parakeet model file {} ({})...",
+                self.name,
+                format_bytes(total)
+            ),
+            _ => format!("conch: downloading parakeet model file {}...", self.name),
+        }
+    }
+
+    fn observe(&mut self, downloaded: u64) -> Option<String> {
+        if !self.should_report(downloaded) {
+            return None;
+        }
+        self.last_reported = downloaded;
+        Some(self.progress_message(downloaded))
+    }
+
+    fn finish(&mut self, downloaded: u64) -> Option<String> {
+        if downloaded == self.last_reported {
+            return None;
+        }
+        self.last_reported = downloaded;
+        Some(self.progress_message(downloaded))
+    }
+
+    fn should_report(&self, downloaded: u64) -> bool {
+        if downloaded <= self.last_reported {
+            return false;
+        }
+
+        match self.total_bytes {
+            Some(total) if total > 0 => {
+                let last_pct = self.last_reported.saturating_mul(100) / total;
+                let current_pct = downloaded.saturating_mul(100) / total;
+                downloaded == total || current_pct >= last_pct + PROGRESS_REPORT_PERCENT_STEP
+            }
+            _ => downloaded.saturating_sub(self.last_reported) >= PROGRESS_REPORT_BYTES_STEP,
+        }
+    }
+
+    fn progress_message(&self, downloaded: u64) -> String {
+        match self.total_bytes {
+            Some(total) if total > 0 => {
+                let pct = downloaded
+                    .saturating_mul(100)
+                    .min(total.saturating_mul(100))
+                    / total;
+                format!(
+                    "conch: parakeet {}: {} / {} ({}%)",
+                    self.name,
+                    format_bytes(downloaded.min(total)),
+                    format_bytes(total),
+                    pct
+                )
+            }
+            _ => format!(
+                "conch: parakeet {}: {} downloaded",
+                self.name,
+                format_bytes(downloaded)
+            ),
+        }
+    }
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+
+    let mut value = bytes as f64;
+    let mut unit_idx = 0usize;
+    while value >= 1024.0 && unit_idx < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit_idx += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit_idx])
 }
 
 #[derive(Debug)]
@@ -315,5 +424,99 @@ impl SttStream for ScriptedLocalStream {
 
     async fn close(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn progress_reporter_uses_content_length_thresholds() {
+        let mut reporter = DownloadProgressReporter::new("encoder.onnx", Some(100));
+
+        assert_eq!(
+            reporter.start_message(),
+            "conch: downloading parakeet model file encoder.onnx (100 B)..."
+        );
+        assert_eq!(reporter.observe(4), None);
+        assert_eq!(
+            reporter.observe(5),
+            Some("conch: parakeet encoder.onnx: 5 B / 100 B (5%)".to_string())
+        );
+        assert_eq!(reporter.observe(9), None);
+        assert_eq!(
+            reporter.observe(10),
+            Some("conch: parakeet encoder.onnx: 10 B / 100 B (10%)".to_string())
+        );
+        assert_eq!(
+            reporter.finish(100),
+            Some("conch: parakeet encoder.onnx: 100 B / 100 B (100%)".to_string())
+        );
+        assert_eq!(reporter.finish(100), None);
+    }
+
+    #[test]
+    fn progress_reporter_without_content_length_uses_byte_thresholds() {
+        let mut reporter = DownloadProgressReporter::new("encoder.onnx", None);
+        let step = PROGRESS_REPORT_BYTES_STEP;
+
+        assert_eq!(
+            reporter.start_message(),
+            "conch: downloading parakeet model file encoder.onnx..."
+        );
+        assert_eq!(reporter.observe(step - 1), None);
+        assert_eq!(
+            reporter.observe(step),
+            Some(format!(
+                "conch: parakeet encoder.onnx: {} downloaded",
+                format_bytes(step)
+            ))
+        );
+        assert_eq!(
+            reporter.finish(step + 512),
+            Some(format!(
+                "conch: parakeet encoder.onnx: {} downloaded",
+                format_bytes(step + 512)
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn download_to_with_progress_writes_file_and_emits_messages() {
+        let server = MockServer::start().await;
+        let body = vec![42u8; 4096];
+        Mock::given(method("GET"))
+            .and(path("/encoder.onnx"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(body.clone()))
+            .mount(&server)
+            .await;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let dest = tmp.path().join("encoder.onnx.partial");
+        let client = reqwest::Client::builder().build().expect("client");
+        let mut lines = Vec::new();
+
+        download_to_with_progress(
+            &client,
+            &format!("{}/encoder.onnx", server.uri()),
+            &dest,
+            "encoder.onnx",
+            |line| lines.push(line),
+        )
+        .await
+        .expect("download succeeds");
+
+        assert_eq!(tokio::fs::read(&dest).await.expect("downloaded file"), body);
+        assert_eq!(
+            lines.first().expect("start line"),
+            "conch: downloading parakeet model file encoder.onnx (4.0 KiB)..."
+        );
+        assert!(
+            lines.iter().any(|line| line.contains("(100%)")),
+            "expected a final 100% progress line, got {lines:?}"
+        );
     }
 }
