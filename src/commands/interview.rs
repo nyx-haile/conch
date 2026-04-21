@@ -48,7 +48,11 @@ pub async fn run(
                 .context("DEEPGRAM_API_KEY required for deepgram STT backend")?;
             Arc::new(crate::stt::deepgram::DeepgramStt::production(key))
         }
-        SttBackend::Local => Arc::new(crate::stt::local::LocalStt::new()),
+        SttBackend::Local => {
+            let stt = crate::stt::local::LocalStt::new(config.parakeet_model_dir());
+            stt.prepare().await.context("preparing local STT model")?;
+            Arc::new(stt)
+        }
     };
 
     let tts: Arc<dyn TextToSpeech> = match config.tts_backend() {

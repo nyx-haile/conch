@@ -70,6 +70,14 @@ impl Config {
     pub fn sessions_dir(&self) -> PathBuf { self.conch_dir().join("sessions") }
     pub fn brand_file(&self) -> PathBuf { self.conch_dir().join("brand.md") }
     pub fn fillers_dir(&self) -> PathBuf { self.conch_dir().join("fillers") }
+    pub fn parakeet_model_dir(&self) -> PathBuf {
+        if let Ok(p) = std::env::var("CONCH_PARAKEET_MODEL_DIR") {
+            return PathBuf::from(p);
+        }
+        self.conch_dir()
+            .join("models")
+            .join("parakeet-nemotron-streaming-en-0.6b")
+    }
 
     pub fn openrouter_api_key(&self) -> Option<&str> { self.openrouter_api_key.as_deref() }
     pub fn anthropic_api_key(&self) -> Option<&str> { self.anthropic_api_key.as_deref() }
