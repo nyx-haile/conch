@@ -154,49 +154,119 @@ fn build_cpal_input_stream(
     let device = host
         .default_input_device()
         .ok_or_else(|| anyhow::anyhow!("no default input device"))?;
-    let supported = device.default_input_config()?;
-    let device_rate = supported.sample_rate().0;
-    let device_channels = supported.channels();
-    let buffer_range = *supported.buffer_size();
 
+    // Rate-limit err_callback log spam. Shared across retry attempts so a
+    // successfully-opened stream inherits accumulated counters. Stored as
+    // millis-since-UNIX_EPOCH so the closure stays Send + 'static.
+    let last_err_log_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let err_suppressed = Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    // Build an ordered list of candidate configs to try. Default first
+    // (usually best quality + lowest xrun risk); then every supported-range
+    // variant with its max sample rate. Some ALSA/PipeWire setups reject
+    // the default config's buffer size entirely
+    // (snd_pcm_hw_params_set_buffer_size: Invalid argument) — in that case
+    // we need to walk supported configs until one opens.
+    let mut candidates: Vec<cpal::SupportedStreamConfig> = Vec::new();
+    if let Ok(default) = device.default_input_config() {
+        candidates.push(default);
+    }
+    if let Ok(iter) = device.supported_input_configs() {
+        for range in iter {
+            let cfg = range.with_max_sample_rate();
+            if !candidates.iter().any(|c| {
+                c.sample_format() == cfg.sample_format()
+                    && c.sample_rate() == cfg.sample_rate()
+                    && c.channels() == cfg.channels()
+            }) {
+                candidates.push(cfg);
+            }
+        }
+    }
+    if candidates.is_empty() {
+        return Err(anyhow::anyhow!("no supported input configs"));
+    }
+
+    // For each config, try first with an explicit ~30ms buffer (sweet spot
+    // that avoids POLLERR under PipeWire's ALSA-PCM compat plugin and
+    // PulseAudio's ALSA bridge), then fall back to BufferSize::Default for
+    // ALSA backends that reject fixed sizes outright.
+    const TARGET_BUFFER_MS: u32 = 30;
+    let mut last_err: Option<anyhow::Error> = None;
+    for supported in candidates {
+        let device_rate = supported.sample_rate().0;
+        let device_channels = supported.channels();
+        let buffer_range = *supported.buffer_size();
+        let mut cfg: cpal::StreamConfig = supported.into();
+        let fixed = match buffer_range {
+            cpal::SupportedBufferSize::Range { min, max } => {
+                let target = (device_rate / 1000) * TARGET_BUFFER_MS;
+                Some(cpal::BufferSize::Fixed(target.clamp(min, max)))
+            }
+            cpal::SupportedBufferSize::Unknown => None,
+        };
+        let buffer_attempts: &[cpal::BufferSize] = match &fixed {
+            Some(f) => &[*f, cpal::BufferSize::Default][..],
+            None => &[cpal::BufferSize::Default][..],
+        };
+        for buf_size in buffer_attempts {
+            cfg.buffer_size = *buf_size;
+            match try_build_input_stream(
+                &device,
+                &cfg,
+                frame_ms,
+                device_rate,
+                device_channels,
+                tx.clone(),
+                Arc::clone(&last_err_log_ms),
+                Arc::clone(&err_suppressed),
+            ) {
+                Ok(stream) => {
+                    tracing::info!(
+                        rate = device_rate,
+                        channels = device_channels,
+                        buffer_size = ?cfg.buffer_size,
+                        "cpal input stream opened"
+                    );
+                    return Ok(stream);
+                }
+                Err(e) => {
+                    tracing::debug!(
+                        rate = device_rate,
+                        channels = device_channels,
+                        buffer_size = ?cfg.buffer_size,
+                        err = %e,
+                        "cpal input config attempt failed"
+                    );
+                    last_err = Some(e);
+                }
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| anyhow::anyhow!("cpal input stream build failed")))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn try_build_input_stream(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    frame_ms: u32,
+    device_rate: u32,
+    device_channels: u16,
+    tx: tokio::sync::mpsc::UnboundedSender<Frame>,
+    last_err_log_ms: Arc<std::sync::atomic::AtomicU64>,
+    err_suppressed: Arc<std::sync::atomic::AtomicU64>,
+) -> Result<cpal::Stream> {
     let samples_per_frame_device = ((device_rate as u64 * frame_ms as u64) / 1000) as usize
         * device_channels as usize;
     let mut buf: Vec<i16> = Vec::with_capacity(samples_per_frame_device);
 
-    // Explicit buffer size targeting ~30 ms of audio. cpal's default leaves
-    // BufferSize::Default which under PipeWire's ALSA-PCM compat plugin
-    // (and under PulseAudio's ALSA bridge) often picks a window so small
-    // that the kernel raises POLLERR continuously. ~30 ms is a sweet spot:
-    // big enough to ride out scheduler jitter, small enough to keep partial
-    // STT latency low.
-    const TARGET_BUFFER_MS: u32 = 30;
-    let mut config: cpal::StreamConfig = supported.into();
-    config.buffer_size = match buffer_range {
-        cpal::SupportedBufferSize::Range { min, max } => {
-            let target = (device_rate / 1000) * TARGET_BUFFER_MS;
-            cpal::BufferSize::Fixed(target.clamp(min, max))
-        }
-        cpal::SupportedBufferSize::Unknown => cpal::BufferSize::Default,
-    };
-    tracing::debug!(
-        rate = device_rate,
-        channels = device_channels,
-        buffer_size = ?config.buffer_size,
-        "cpal input stream config"
-    );
-
-    // Rate-limit err_callback log spam. Stored as millis-since-UNIX_EPOCH in
-    // an AtomicU64 so the closure stays Send + 'static. `0` == "never logged".
-    let last_err_log_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let err_suppressed = Arc::new(std::sync::atomic::AtomicU64::new(0));
-
     let stream = device.build_input_stream(
-        &config,
+        config,
         move |data: &[f32], _: &_| {
             for &s in data {
                 buf.push((s * i16::MAX as f32) as i16);
                 if buf.len() >= samples_per_frame_device {
-                    // Downmix to mono.
                     let mono: Vec<i16> = if device_channels == 1 {
                         buf.clone()
                     } else {
@@ -224,32 +294,28 @@ fn build_cpal_input_stream(
                 }
             }
         },
-        {
-            let last_err_log_ms = Arc::clone(&last_err_log_ms);
-            let err_suppressed = Arc::clone(&err_suppressed);
-            move |e| {
-                use std::sync::atomic::Ordering::Relaxed;
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let now_ms = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.as_millis() as u64)
-                    .unwrap_or(0);
-                let last = last_err_log_ms.load(Relaxed);
-                if now_ms.saturating_sub(last) >= INPUT_ERR_LOG_INTERVAL.as_millis() as u64 {
-                    let suppressed = err_suppressed.swap(0, Relaxed);
-                    last_err_log_ms.store(now_ms, Relaxed);
-                    if suppressed > 0 {
-                        tracing::error!(
-                            suppressed,
-                            "cpal input stream error: {e} (+{suppressed} suppressed in last {}ms)",
-                            INPUT_ERR_LOG_INTERVAL.as_millis()
-                        );
-                    } else {
-                        tracing::error!("cpal input stream error: {e}");
-                    }
+        move |e| {
+            use std::sync::atomic::Ordering::Relaxed;
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let last = last_err_log_ms.load(Relaxed);
+            if now_ms.saturating_sub(last) >= INPUT_ERR_LOG_INTERVAL.as_millis() as u64 {
+                let suppressed = err_suppressed.swap(0, Relaxed);
+                last_err_log_ms.store(now_ms, Relaxed);
+                if suppressed > 0 {
+                    tracing::error!(
+                        suppressed,
+                        "cpal input stream error: {e} (+{suppressed} suppressed in last {}ms)",
+                        INPUT_ERR_LOG_INTERVAL.as_millis()
+                    );
                 } else {
-                    err_suppressed.fetch_add(1, Relaxed);
+                    tracing::error!("cpal input stream error: {e}");
                 }
+            } else {
+                err_suppressed.fetch_add(1, Relaxed);
             }
         },
         None,
