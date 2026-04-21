@@ -92,11 +92,8 @@ impl PlaybackTap {
 // ---------------------------------------------------------------------------
 
 use rodio::buffer::SamplesBuffer;
-use rodio::cpal;
 use rodio::{DeviceSinkBuilder, Player};
 use std::num::NonZero;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Instant;
 
 enum RodioCmd {
     Push { pcm: Vec<i16>, sample_rate: u32 },
@@ -115,29 +112,13 @@ impl RodioSink {
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<()>>();
 
         let worker = std::thread::spawn(move || {
-            let start = Instant::now();
-            let last_err_ms = std::sync::Arc::new(AtomicU64::new(0));
-            let error_cb = move |err: cpal::StreamError| {
-                let now_ms = start.elapsed().as_millis() as u64;
-                let prev = last_err_ms.load(Ordering::Relaxed);
-                if now_ms.saturating_sub(prev) >= 5_000
-                    && last_err_ms
-                        .compare_exchange(prev, now_ms, Ordering::Relaxed, Ordering::Relaxed)
-                        .is_ok()
-                {
-                    tracing::warn!(target: "conch::audio", "rodio output stream error: {err}");
-                }
-            };
-
-            let builder = match DeviceSinkBuilder::from_default_device() {
-                Ok(b) => b.with_error_callback(error_cb),
-                Err(e) => {
-                    let _ = init_tx.send(Err(anyhow::anyhow!("rodio output device: {e}")));
-                    return;
-                }
-            };
-
-            let mut sink_device = match builder.open_stream() {
+            // `open_default_sink()` tries the default device's default config,
+            // then falls back through every supported config and alternate
+            // device until one opens. On ALSA setups where the default config
+            // is unacceptable (e.g. `snd_pcm_hw_params_set_buffer_size`
+            // invalid arg) this is what lets playback succeed. Rodio's own
+            // errors flow through its tracing feature into our file log.
+            let mut sink_device = match DeviceSinkBuilder::open_default_sink() {
                 Ok(s) => s,
                 Err(e) => {
                     let _ = init_tx.send(Err(anyhow::anyhow!("rodio output stream: {e}")));
