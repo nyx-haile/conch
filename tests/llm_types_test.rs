@@ -1,6 +1,4 @@
-use conch::llm::types::{
-    ChatResponse, FunctionCall, Message, Role, ToolCall, ToolDefinition,
-};
+use conch::llm::types::{ChatResponse, FunctionCall, Message, Role, ToolCall, ToolDefinition};
 use serde_json::json;
 
 #[test]
@@ -87,7 +85,10 @@ fn chat_response_parses_plain_text_finish() {
         }]
     });
     let resp: ChatResponse = serde_json::from_value(raw).unwrap();
-    assert_eq!(resp.choices[0].message.content.as_deref(), Some("final answer"));
+    assert_eq!(
+        resp.choices[0].message.content.as_deref(),
+        Some("final answer")
+    );
     assert_eq!(resp.choices[0].finish_reason, "stop");
 }
 

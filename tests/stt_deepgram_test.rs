@@ -18,13 +18,22 @@ async fn run_mock_server() -> (String, tokio::task::JoinHandle<Option<String>>) 
         let captured_auth: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let auth_clone = captured_auth.clone();
 
-        let mut ws = tokio_tungstenite::accept_hdr_async(stream, move |req: &http::Request<()>, resp: http::Response<()>| -> Result<http::Response<()>, http::Response<Option<String>>> {
-            let auth = req.headers().get("authorization")
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.to_string());
-            *auth_clone.lock().unwrap() = auth;
-            Ok(resp)
-        }).await.unwrap();
+        let mut ws = tokio_tungstenite::accept_hdr_async(
+            stream,
+            move |req: &http::Request<()>,
+                  resp: http::Response<()>|
+                  -> Result<http::Response<()>, http::Response<Option<String>>> {
+                let auth = req
+                    .headers()
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+                *auth_clone.lock().unwrap() = auth;
+                Ok(resp)
+            },
+        )
+        .await
+        .unwrap();
 
         // Wait for at least one binary frame.
         while let Some(msg) = ws.next().await {

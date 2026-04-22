@@ -97,17 +97,12 @@ fn render_transcript(f: &mut Frame, area: Rect, state: &AppState) {
             Style::default().fg(Color::Magenta),
         )));
     }
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Transcript ");
+    let block = Block::default().borders(Borders::ALL).title(" Transcript ");
     let take = lines
         .len()
         .saturating_sub(area.height.saturating_sub(2) as usize);
     let view: Vec<Line> = lines.into_iter().skip(take).collect();
-    f.render_widget(
-        Paragraph::new(view).block(block),
-        area,
-    );
+    f.render_widget(Paragraph::new(view).block(block), area);
 }
 
 fn render_sidebar(f: &mut Frame, area: Rect, state: &AppState) {
@@ -120,9 +115,7 @@ fn render_sidebar(f: &mut Frame, area: Rect, state: &AppState) {
         ])
         .split(area);
 
-    let brief_block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Brief ");
+    let brief_block = Block::default().borders(Borders::ALL).title(" Brief ");
     f.render_widget(
         Paragraph::new(state.brief())
             .block(brief_block)

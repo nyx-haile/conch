@@ -55,10 +55,8 @@ pub async fn run_agent(
                     ));
                 }
                 for call in &tool_calls {
-                    let args: serde_json::Value =
-                        serde_json::from_str(&call.function.arguments).unwrap_or_else(|_| {
-                            serde_json::json!({ "raw": call.function.arguments })
-                        });
+                    let args: serde_json::Value = serde_json::from_str(&call.function.arguments)
+                        .unwrap_or_else(|_| serde_json::json!({ "raw": call.function.arguments }));
                     let result = match registry.call(&call.function.name, args).await {
                         Ok(output) => output,
                         Err(e) => format!("tool error: {}", e),

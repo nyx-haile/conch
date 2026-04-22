@@ -82,7 +82,8 @@ impl LlmClient {
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        let cached = SCRIPTED_LLM_SCRIPT.get_or_init(|| std::env::var("CONCH_TEST_SCRIPTED_LLM").ok());
+        let cached =
+            SCRIPTED_LLM_SCRIPT.get_or_init(|| std::env::var("CONCH_TEST_SCRIPTED_LLM").ok());
         if let Some(script) = cached {
             let parts: Vec<&str> = script.split('|').collect();
             let idx = SCRIPTED_LLM_INDEX.fetch_add(1, Ordering::SeqCst);

@@ -130,8 +130,9 @@ impl TtsStream for ElevenLabsStream {
                         self.done = true;
                     }
                     if let Some(b64) = parsed.audio {
-                        let bytes =
-                            base64::engine::general_purpose::STANDARD.decode(&b64).ok()?;
+                        let bytes = base64::engine::general_purpose::STANDARD
+                            .decode(&b64)
+                            .ok()?;
                         let (pcm, _rate) = decode_mp3_to_pcm(&bytes).ok()?;
                         if !pcm.is_empty() {
                             return Some(pcm);

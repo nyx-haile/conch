@@ -82,9 +82,14 @@ async fn prep_produces_brief_using_github_tool() {
         max_turns: 10,
     };
 
-    let brief = run_agent(&client, &registry, &config, "https://github.com/user/howtowin")
-        .await
-        .unwrap();
+    let brief = run_agent(
+        &client,
+        &registry,
+        &config,
+        "https://github.com/user/howtowin",
+    )
+    .await
+    .unwrap();
 
     assert!(brief.contains("# Interview Brief: howtowin"));
     assert!(brief.contains("Rust"));

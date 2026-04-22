@@ -22,8 +22,7 @@ pub fn run(config: &Config, session_id: &str, out: Option<PathBuf>) -> anyhow::R
     for name in candidates {
         let src = session_dir.join(name);
         if src.exists() {
-            std::fs::copy(&src, out.join(name))
-                .with_context(|| format!("copying {}", name))?;
+            std::fs::copy(&src, out.join(name)).with_context(|| format!("copying {}", name))?;
             copied += 1;
         }
     }

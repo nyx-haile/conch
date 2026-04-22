@@ -117,7 +117,12 @@ impl LocalFsTool {
     }
 }
 
-fn walk_tree(dir: &Path, prefix: &str, depth_remaining: usize, out: &mut String) -> anyhow::Result<()> {
+fn walk_tree(
+    dir: &Path,
+    prefix: &str,
+    depth_remaining: usize,
+    out: &mut String,
+) -> anyhow::Result<()> {
     if depth_remaining == 0 {
         return Ok(());
     }
@@ -186,10 +191,7 @@ impl Tool for LocalFsTool {
             .get("action")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("missing 'action'"))?;
-        let path = input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
+        let path = input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         match action {
             "list_dir" => self.list_dir(path),
             "read_file" => self.read_file(path),

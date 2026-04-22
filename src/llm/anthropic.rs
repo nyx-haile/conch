@@ -1,6 +1,4 @@
-use crate::llm::types::{
-    ChatRequest, ChatResponse, Choice, FunctionCall, Message, Role, ToolCall,
-};
+use crate::llm::types::{ChatRequest, ChatResponse, Choice, FunctionCall, Message, Role, ToolCall};
 use crate::model::Model;
 use anyhow::{anyhow, Context};
 use reqwest::Client;
@@ -89,9 +87,9 @@ fn to_native_request(req: &ChatRequest) -> anyhow::Result<NativeRequest> {
                 if let Some(calls) = &msg.tool_calls {
                     for call in calls {
                         let input: Value = serde_json::from_str(&call.function.arguments)
-                            .unwrap_or_else(|_| {
-                                serde_json::json!({ "raw": call.function.arguments })
-                            });
+                            .unwrap_or_else(
+                                |_| serde_json::json!({ "raw": call.function.arguments }),
+                            );
                         blocks.push(NativeBlock::ToolUse {
                             id: call.id.clone(),
                             name: call.function.name.clone(),

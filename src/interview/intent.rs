@@ -4,10 +4,8 @@ use regex::Regex;
 use serde_json::json;
 
 static END_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"(?i)\b(that'?s a wrap|end interview|we'?re done|wrap it up|end the session)\b",
-    )
-    .unwrap()
+    Regex::new(r"(?i)\b(that'?s a wrap|end interview|we'?re done|wrap it up|end the session)\b")
+        .unwrap()
 });
 
 pub fn detect_end_command(final_text: &str) -> bool {

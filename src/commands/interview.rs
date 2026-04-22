@@ -85,9 +85,7 @@ pub async fn run(
     let sink: Box<dyn crate::audio::output::AudioSink> = if headless {
         Box::new(crate::audio::output::VecSink::new())
     } else {
-        Box::new(
-            crate::audio::output::RodioSink::new_default().context("opening audio output")?,
-        )
+        Box::new(crate::audio::output::RodioSink::new_default().context("opening audio output")?)
     };
 
     let brand = std::fs::read_to_string(config.brand_file()).ok();
@@ -97,8 +95,7 @@ pub async fn run(
     )));
     let (event_tx, event_rx) = mpsc::channel::<UserEvent>(32);
 
-    let log =
-        ConversationLog::new(session.conversation_path(), session.transcript_path())?;
+    let log = ConversationLog::new(session.conversation_path(), session.transcript_path())?;
 
     let orch_config = OrchestratorConfig {
         model: model_slug.clone(),
@@ -111,7 +108,13 @@ pub async fn run(
 
     let llm_caller: Arc<dyn LlmCaller> = Arc::new(client);
     let mut orch = Orchestrator::new(
-        llm_caller, stt, tts, sink, state.clone(), event_rx, orch_config,
+        llm_caller,
+        stt,
+        tts,
+        sink,
+        state.clone(),
+        event_rx,
+        orch_config,
     )
     .with_log(log);
 
@@ -120,11 +123,9 @@ pub async fn run(
     if !headless {
         match crate::audio::input::CpalMicSource::new_default(20) {
             Ok(mic) => {
-                let (mic_tx, mic_rx) = tokio::sync::broadcast::channel::<
-                    crate::audio::input::Frame,
-                >(256);
-                let gate =
-                    crate::audio::input::MicGate::new(Box::new(mic), mic_tx);
+                let (mic_tx, mic_rx) =
+                    tokio::sync::broadcast::channel::<crate::audio::input::Frame>(256);
+                let gate = crate::audio::input::MicGate::new(Box::new(mic), mic_tx);
                 let handle = gate.toggle_handle();
                 tokio::spawn(async move {
                     if let Err(e) = gate.run().await {
@@ -185,7 +186,9 @@ async fn run_tui(
 ) -> anyhow::Result<()> {
     use crate::interview::tui::widgets::render_frame;
     use crossterm::event::{KeyboardEnhancementFlags, PushKeyboardEnhancementFlags};
-    use crossterm::terminal::{enable_raw_mode, supports_keyboard_enhancement, EnterAlternateScreen};
+    use crossterm::terminal::{
+        enable_raw_mode, supports_keyboard_enhancement, EnterAlternateScreen,
+    };
     use ratatui::backend::CrosstermBackend;
     use ratatui::Terminal;
 

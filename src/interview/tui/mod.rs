@@ -24,10 +24,7 @@ const RELEASE_BACKOFF: Duration = Duration::from_millis(200);
 /// ~30ms cadence; this gap keeps a held space key from spamming toggles.
 const LEGACY_DEBOUNCE: Duration = Duration::from_millis(150);
 
-pub async fn spawn_key_reader(
-    tx: mpsc::Sender<UserEvent>,
-    hold_mode: bool,
-) -> anyhow::Result<()> {
+pub async fn spawn_key_reader(tx: mpsc::Sender<UserEvent>, hold_mode: bool) -> anyhow::Result<()> {
     if hold_mode {
         spawn_hold_reader(tx).await
     } else {
@@ -50,8 +47,8 @@ async fn spawn_legacy_reader(tx: mpsc::Sender<UserEvent>) -> anyhow::Result<()> 
         }
         if matches!(k.code, KeyCode::Char(' ')) {
             let now = Instant::now();
-            let held = last_mic_toggle
-                .is_some_and(|prev| now.duration_since(prev) < LEGACY_DEBOUNCE);
+            let held =
+                last_mic_toggle.is_some_and(|prev| now.duration_since(prev) < LEGACY_DEBOUNCE);
             last_mic_toggle = Some(now);
             if held {
                 continue;

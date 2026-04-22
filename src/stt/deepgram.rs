@@ -29,7 +29,11 @@ impl DeepgramStt {
 #[async_trait]
 impl SpeechToText for DeepgramStt {
     async fn open_stream(&self, config: &SttConfig) -> Result<Box<dyn SttStream>> {
-        let sep = if self.base_url.contains('?') { '&' } else { '?' };
+        let sep = if self.base_url.contains('?') {
+            '&'
+        } else {
+            '?'
+        };
         let url = format!(
             "{}{}encoding=linear16&sample_rate={}&model=nova-2&interim_results=true&punctuate={}",
             self.base_url,
@@ -37,10 +41,15 @@ impl SpeechToText for DeepgramStt {
             config.sample_rate.max(16_000),
             config.punctuate
         );
-        let mut req = url.as_str().into_client_request().context("building ws request")?;
+        let mut req = url
+            .as_str()
+            .into_client_request()
+            .context("building ws request")?;
         req.headers_mut().insert(
             "Authorization",
-            format!("Token {}", self.api_key).parse().map_err(|_| anyhow::anyhow!("invalid api key for Authorization header"))?,
+            format!("Token {}", self.api_key)
+                .parse()
+                .map_err(|_| anyhow::anyhow!("invalid api key for Authorization header"))?,
         );
 
         let (ws, _) = connect_async(req).await.context("connecting to deepgram")?;
@@ -107,7 +116,9 @@ impl SttStream for DeepgramStream {
                     let parsed: Result<DgResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) => {
-                            let Some(alt) = r.channel.alternatives.into_iter().next() else { continue; };
+                            let Some(alt) = r.channel.alternatives.into_iter().next() else {
+                                continue;
+                            };
                             if alt.transcript.is_empty() {
                                 continue;
                             }

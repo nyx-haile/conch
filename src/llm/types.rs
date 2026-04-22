@@ -73,7 +73,11 @@ pub struct ToolDefinition {
 }
 
 impl ToolDefinition {
-    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: Value) -> Self {
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: Value,
+    ) -> Self {
         Self {
             tool_type: "function".to_string(),
             function: FunctionSpec {

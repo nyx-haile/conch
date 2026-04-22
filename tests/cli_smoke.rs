@@ -18,10 +18,7 @@ fn cli_help_lists_subcommands() {
 
 #[test]
 fn cli_no_args_shows_help_and_exits_nonzero() {
-    Command::cargo_bin("conch")
-        .unwrap()
-        .assert()
-        .failure();
+    Command::cargo_bin("conch").unwrap().assert().failure();
 }
 
 #[test]

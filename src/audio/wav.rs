@@ -18,7 +18,9 @@ impl WavSessionWriter {
         };
         let writer = WavWriter::create(path, spec)
             .with_context(|| format!("creating wav at {}", path.display()))?;
-        Ok(Self { writer: Some(writer) })
+        Ok(Self {
+            writer: Some(writer),
+        })
     }
 
     pub fn write_i16(&mut self, samples: &[i16]) -> Result<()> {

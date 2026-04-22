@@ -44,8 +44,14 @@ fn session_paths_point_inside_directory() {
     let session = Session::create(&sessions_root, "2026-04-14", "test").unwrap();
 
     assert_eq!(session.brief_path(), session.directory().join("brief.md"));
-    assert_eq!(session.raw_audio_path(), session.directory().join("raw_audio.wav"));
-    assert_eq!(session.transcript_path(), session.directory().join("transcript.md"));
+    assert_eq!(
+        session.raw_audio_path(),
+        session.directory().join("raw_audio.wav")
+    );
+    assert_eq!(
+        session.transcript_path(),
+        session.directory().join("transcript.md")
+    );
     assert_eq!(session.edited_path(), session.directory().join("edited.md"));
 }
 
@@ -62,11 +68,7 @@ fn list_sessions_returns_existing_dirs_sorted_desc() {
 
     assert_eq!(
         ids,
-        vec![
-            "2026-04-14-new",
-            "2026-04-13-mid",
-            "2026-04-12-old",
-        ]
+        vec!["2026-04-14-new", "2026-04-13-mid", "2026-04-12-old",]
     );
 }
 

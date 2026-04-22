@@ -1,7 +1,11 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "conch", version, about = "Voice interview CLI for project writing")]
+#[command(
+    name = "conch",
+    version,
+    about = "Voice interview CLI for project writing"
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Command,

@@ -1,5 +1,5 @@
-use conch::interview::tui::state::{AppState, Status, TurnView};
 use conch::interview::history::Speaker;
+use conch::interview::tui::state::{AppState, Status, TurnView};
 use std::time::Duration;
 
 #[test]
@@ -11,7 +11,10 @@ fn appstate_tracks_status_and_appends_turns() {
     s.update_current_user_draft("hello");
     assert_eq!(s.current_user_draft(), "hello");
 
-    s.push_turn(TurnView { speaker: Speaker::User, text: "hello world".into() });
+    s.push_turn(TurnView {
+        speaker: Speaker::User,
+        text: "hello world".into(),
+    });
     assert_eq!(s.history().len(), 1);
     assert_eq!(s.current_user_draft(), "");
 

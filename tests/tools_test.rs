@@ -6,8 +6,12 @@ struct EchoTool;
 
 #[async_trait]
 impl Tool for EchoTool {
-    fn name(&self) -> &'static str { "echo" }
-    fn description(&self) -> &'static str { "Echo the provided text" }
+    fn name(&self) -> &'static str {
+        "echo"
+    }
+    fn description(&self) -> &'static str {
+        "Echo the provided text"
+    }
     fn input_schema(&self) -> Value {
         json!({
             "type": "object",
@@ -26,7 +30,10 @@ async fn registry_dispatches_to_registered_tool() {
     let mut registry = ToolRegistry::new();
     registry.register(Box::new(EchoTool));
 
-    let result = registry.call("echo", json!({ "text": "hi" })).await.unwrap();
+    let result = registry
+        .call("echo", json!({ "text": "hi" }))
+        .await
+        .unwrap();
     assert_eq!(result, "hi");
 }
 

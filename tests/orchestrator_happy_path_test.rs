@@ -119,9 +119,9 @@ async fn opening_then_one_turn_then_voice_command_end() {
 async fn user_quit_ends_immediately() {
     let stt = Arc::new(fakes::FakeStt::new(vec![]));
     let tts = Arc::new(fakes::FakeTts);
-    let llm = Arc::new(fakes::FakeLlm::new(vec![
-        "Welcome! Let's chat.".to_string(),
-    ]));
+    let llm = Arc::new(fakes::FakeLlm::new(
+        vec!["Welcome! Let's chat.".to_string()],
+    ));
 
     let sink = fakes::FakeSink::new();
     let state = Arc::new(RwLock::new(AppState::new(
@@ -167,9 +167,7 @@ async fn user_quit_ends_immediately() {
 
 #[tokio::test]
 async fn llm_end_session_tool_call() {
-    use conch::llm::types::{
-        ChatResponse, Choice, FunctionCall, Message, Role, ToolCall,
-    };
+    use conch::llm::types::{ChatResponse, Choice, FunctionCall, Message, Role, ToolCall};
 
     // Custom FakeLlm that returns an end_session tool call on the second chat.
     struct EndSessionLlm {
@@ -230,9 +228,9 @@ async fn llm_end_session_tool_call() {
         }
     }
 
-    let stt = Arc::new(fakes::FakeStt::new(vec![
-        vec!["just a short answer".to_string()],
-    ]));
+    let stt = Arc::new(fakes::FakeStt::new(vec![vec![
+        "just a short answer".to_string()
+    ]]));
     let tts = Arc::new(fakes::FakeTts);
     let llm = Arc::new(EndSessionLlm {
         call_count: std::sync::Mutex::new(0),
@@ -302,9 +300,9 @@ async fn barge_in_interrupts_speaking_and_returns_to_idle() {
     ]));
 
     // One STT script for one user turn.
-    let stt = Arc::new(fakes::FakeStt::new(vec![
-        vec!["I work on audio systems".to_string()],
-    ]));
+    let stt = Arc::new(fakes::FakeStt::new(vec![vec![
+        "I work on audio systems".to_string()
+    ]]));
 
     let sink = fakes::FakeSink::new();
     let collected = sink.collected();
@@ -383,16 +381,13 @@ async fn slow_llm_triggers_thinking_filler_status() {
     // continuation after a user turn takes 1.5s — well past the 700ms
     // filler threshold.
     let llm = Arc::new(fakes::SlowLlm::new(
-        vec![
-            "Welcome!".to_string(),
-            "Interesting answer.".to_string(),
-        ],
+        vec!["Welcome!".to_string(), "Interesting answer.".to_string()],
         Duration::from_millis(1500),
     ));
 
-    let stt = Arc::new(fakes::FakeStt::new(vec![
-        vec!["some user input".to_string()],
-    ]));
+    let stt = Arc::new(fakes::FakeStt::new(vec![vec![
+        "some user input".to_string()
+    ]]));
     let tts = Arc::new(fakes::FakeTts);
     let sink = fakes::FakeSink::new();
 

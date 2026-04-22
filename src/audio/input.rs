@@ -23,7 +23,10 @@ pub struct VecMicSource {
 
 impl VecMicSource {
     pub fn new(frames: Vec<Frame>, interval: Duration) -> Self {
-        Self { frames: frames.into(), interval }
+        Self {
+            frames: frames.into(),
+            interval,
+        }
     }
 }
 
@@ -257,8 +260,8 @@ fn try_build_input_stream(
     last_err_log_ms: Arc<std::sync::atomic::AtomicU64>,
     err_suppressed: Arc<std::sync::atomic::AtomicU64>,
 ) -> Result<cpal::Stream> {
-    let samples_per_frame_device = ((device_rate as u64 * frame_ms as u64) / 1000) as usize
-        * device_channels as usize;
+    let samples_per_frame_device =
+        ((device_rate as u64 * frame_ms as u64) / 1000) as usize * device_channels as usize;
     let mut buf: Vec<i16> = Vec::with_capacity(samples_per_frame_device);
 
     let stream = device.build_input_stream(

@@ -20,7 +20,10 @@ fn apply_overrides(
 }
 
 fn is_tui_command(cmd: &Command) -> bool {
-    matches!(cmd, Command::Sketch(_) | Command::Talk(_) | Command::Chronicle(_))
+    matches!(
+        cmd,
+        Command::Sketch(_) | Command::Talk(_) | Command::Chronicle(_)
+    )
 }
 
 fn init_tracing(tui: bool) -> Option<tracing_appender::non_blocking::WorkerGuard> {
@@ -33,7 +36,10 @@ fn init_tracing(tui: bool) -> Option<tracing_appender::non_blocking::WorkerGuard
             .unwrap_or_else(|| std::path::PathBuf::from(".conch/logs"));
         if let Err(e) = std::fs::create_dir_all(&logs_dir) {
             // Fall back to stderr if we can't make the dir.
-            eprintln!("conch: could not create log dir {}: {e}", logs_dir.display());
+            eprintln!(
+                "conch: could not create log dir {}: {e}",
+                logs_dir.display()
+            );
             tracing_subscriber::fmt().with_env_filter(filter).init();
             return None;
         }

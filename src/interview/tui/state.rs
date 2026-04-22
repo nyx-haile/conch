@@ -44,18 +44,40 @@ impl AppState {
         }
     }
 
-    pub fn title(&self) -> &str { &self.title }
-    pub fn brief(&self) -> &str { &self.brief }
-    pub fn status(&self) -> Status { self.status }
-    pub fn history(&self) -> &[TurnView] { &self.history }
-    pub fn current_user_draft(&self) -> &str { &self.current_user_draft }
-    pub fn assistant_stream(&self) -> &str { &self.assistant_stream }
-    pub fn waveform(&self) -> &[f32] { &self.waveform }
-    pub fn banner(&self) -> Option<&str> { self.banner.as_deref() }
+    pub fn title(&self) -> &str {
+        &self.title
+    }
+    pub fn brief(&self) -> &str {
+        &self.brief
+    }
+    pub fn status(&self) -> Status {
+        self.status
+    }
+    pub fn history(&self) -> &[TurnView] {
+        &self.history
+    }
+    pub fn current_user_draft(&self) -> &str {
+        &self.current_user_draft
+    }
+    pub fn assistant_stream(&self) -> &str {
+        &self.assistant_stream
+    }
+    pub fn waveform(&self) -> &[f32] {
+        &self.waveform
+    }
+    pub fn banner(&self) -> Option<&str> {
+        self.banner.as_deref()
+    }
 
-    pub fn set_status(&mut self, s: Status) { self.status = s; }
-    pub fn set_banner(&mut self, b: Option<String>) { self.banner = b; }
-    pub fn set_waveform(&mut self, samples: Vec<f32>) { self.waveform = samples; }
+    pub fn set_status(&mut self, s: Status) {
+        self.status = s;
+    }
+    pub fn set_banner(&mut self, b: Option<String>) {
+        self.banner = b;
+    }
+    pub fn set_waveform(&mut self, samples: Vec<f32>) {
+        self.waveform = samples;
+    }
 
     pub fn update_current_user_draft(&mut self, text: impl Into<String>) {
         self.current_user_draft = text.into();
@@ -93,6 +115,11 @@ impl AppState {
 
     pub fn format_elapsed(&self, d: Duration) -> String {
         let secs = d.as_secs();
-        format!("{:02}:{:02}:{:02}", secs / 3600, (secs / 60) % 60, secs % 60)
+        format!(
+            "{:02}:{:02}:{:02}",
+            secs / 3600,
+            (secs / 60) % 60,
+            secs % 60
+        )
     }
 }

@@ -55,8 +55,14 @@ mod tests {
 
     #[test]
     fn parses_known_providers() {
-        assert_eq!("anthropic".parse::<Provider>().unwrap(), Provider::Anthropic);
-        assert_eq!("ANTHROPIC".parse::<Provider>().unwrap(), Provider::Anthropic);
+        assert_eq!(
+            "anthropic".parse::<Provider>().unwrap(),
+            Provider::Anthropic
+        );
+        assert_eq!(
+            "ANTHROPIC".parse::<Provider>().unwrap(),
+            Provider::Anthropic
+        );
         assert_eq!("deepseek".parse::<Provider>().unwrap(), Provider::DeepSeek);
         assert_eq!("meta".parse::<Provider>().unwrap(), Provider::Meta);
         assert_eq!("llama".parse::<Provider>().unwrap(), Provider::Meta);

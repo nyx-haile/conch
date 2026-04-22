@@ -162,11 +162,7 @@ impl Orchestrator {
 
     /// Wire a live mic source. Frames are forwarded to STT during record
     /// phases and used to drive the TUI waveform meter.
-    pub fn with_mic(
-        mut self,
-        rx: broadcast::Receiver<Frame>,
-        gate: MicGateHandle,
-    ) -> Self {
+    pub fn with_mic(mut self, rx: broadcast::Receiver<Frame>, gate: MicGateHandle) -> Self {
         self.mic_rx = Some(rx);
         self.mic_gate = Some(gate);
         self

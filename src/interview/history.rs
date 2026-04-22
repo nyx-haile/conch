@@ -63,13 +63,12 @@ impl ConversationLog {
     }
 
     fn write_json(&self) -> Result<()> {
-        let bytes =
-            serde_json::to_vec_pretty(&self.turns).context("serializing conversation")?;
+        let bytes = serde_json::to_vec_pretty(&self.turns).context("serializing conversation")?;
         let tmp = self.json_path.with_extension("json.tmp");
-        std::fs::write(&tmp, bytes)
-            .with_context(|| format!("writing {}", tmp.display()))?;
-        std::fs::rename(&tmp, &self.json_path)
-            .with_context(|| format!("renaming {} -> {}", tmp.display(), self.json_path.display()))?;
+        std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
+        std::fs::rename(&tmp, &self.json_path).with_context(|| {
+            format!("renaming {} -> {}", tmp.display(), self.json_path.display())
+        })?;
         Ok(())
     }
 

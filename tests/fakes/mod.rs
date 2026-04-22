@@ -1,15 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use conch::audio::input::Frame;
 use conch::audio::output::AudioSink;
 use conch::interview::orchestrator::LlmCaller;
-use conch::llm::types::{
-    ChatRequest, ChatResponse, Choice, Message, Role,
-};
+use conch::llm::types::{ChatRequest, ChatResponse, Choice, Message, Role};
 use conch::stt::{SpeechToText, SttConfig, SttStream, TranscriptEvent};
 use conch::tts::{TextToSpeech, TtsConfig, TtsStream};
 use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast;
-use conch::audio::input::Frame;
 
 // ---------------------------------------------------------------------------
 // FakeSink — collects PCM samples, asserts playback happened
@@ -135,7 +133,9 @@ impl SlowLlm {
 #[async_trait]
 impl LlmCaller for SlowLlm {
     async fn chat(&self, req: &ChatRequest) -> Result<ChatResponse> {
-        let n = self.call_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let n = self
+            .call_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         if n > 0 {
             tokio::time::sleep(self.delay).await;
         }

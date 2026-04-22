@@ -32,7 +32,9 @@ fn resample_does_not_leak_tail_padding() {
     // chunk, so the tolerance is ±32 — still well under the ±128 "filter
     // tail" slack of the companion test and tight enough to catch the
     // old padding-leak (+84) regression.
-    let input: Vec<i16> = (0..4800).map(|i| ((i as f32 * 0.1).sin() * 10_000.0) as i16).collect();
+    let input: Vec<i16> = (0..4800)
+        .map(|i| ((i as f32 * 0.1).sin() * 10_000.0) as i16)
+        .collect();
     let out = resample_i16(&input, 48_000, 16_000, 1).unwrap();
     let expected: isize = 1600;
     let delta = (out.len() as isize - expected).abs();

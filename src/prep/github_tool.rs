@@ -125,8 +125,7 @@ impl Tool for GithubTool {
                     .get("content")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| anyhow!("no content in readme response"))?;
-                let cleaned: String =
-                    content_b64.chars().filter(|c| !c.is_whitespace()).collect();
+                let cleaned: String = content_b64.chars().filter(|c| !c.is_whitespace()).collect();
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(cleaned.as_bytes())
                     .context("decoding readme base64")?;

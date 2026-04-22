@@ -10,7 +10,12 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-pub fn resample_i16(input: &[i16], from_rate: u32, to_rate: u32, channels: u16) -> Result<Vec<i16>> {
+pub fn resample_i16(
+    input: &[i16],
+    from_rate: u32,
+    to_rate: u32,
+    channels: u16,
+) -> Result<Vec<i16>> {
     if from_rate == to_rate {
         return Ok(input.to_vec());
     }
@@ -44,9 +49,7 @@ pub fn resample_i16(input: &[i16], from_rate: u32, to_rate: u32, channels: u16) 
         let tail_len = float_in.len() - pos;
         let mut tail = float_in[pos..].to_vec();
         tail.resize(chunk_size, 0.0);
-        let out = resampler
-            .process(&[tail], None)
-            .context("resample tail")?;
+        let out = resampler.process(&[tail], None).context("resample tail")?;
         // Only keep the portion of the output that corresponds to the
         // real (unpadded) tail samples; the rest is resampled zero-padding.
         let valid = ((tail_len as f64) * ratio).round() as usize;

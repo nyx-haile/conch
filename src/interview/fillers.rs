@@ -119,9 +119,7 @@ impl FillerCache {
                 let mut w = WavSessionWriter::create(&path, self.sample_rate, 1)?;
                 w.write_i16(&pcm)?;
                 drop(w);
-                self.manifest
-                    .entries
-                    .insert(text.to_string(), file.clone());
+                self.manifest.entries.insert(text.to_string(), file.clone());
                 let category = if DEFAULT_INTERRUPT_FILLERS.contains(text) {
                     "interrupt"
                 } else {
@@ -133,11 +131,8 @@ impl FillerCache {
                 self.decoded.insert(text.to_string(), pcm);
             }
             let manifest_path = self.dir.join("manifest.json");
-            std::fs::write(
-                &manifest_path,
-                serde_json::to_vec_pretty(&self.manifest)?,
-            )
-            .context("writing manifest")?;
+            std::fs::write(&manifest_path, serde_json::to_vec_pretty(&self.manifest)?)
+                .context("writing manifest")?;
             Ok(())
         }
     }

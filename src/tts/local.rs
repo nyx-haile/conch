@@ -70,7 +70,9 @@ fn read_voice_sample_rate(model_path: &Path) -> Result<u32> {
             .file_name()
             .ok_or_else(|| anyhow!("model path has no filename: {}", model_path.display()))?
             .to_owned();
-        let mut with_ext = file.into_string().map_err(|_| anyhow!("non-utf8 model name"))?;
+        let mut with_ext = file
+            .into_string()
+            .map_err(|_| anyhow!("non-utf8 model name"))?;
         with_ext.push_str(".json");
         p.set_file_name(with_ext);
         p

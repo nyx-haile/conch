@@ -12,7 +12,9 @@ fn detects_end_phrases_case_insensitively() {
 #[test]
 fn ignores_unrelated_phrases() {
     assert!(!detect_end_command("that was a fun interview"));
-    assert!(!detect_end_command("so we have a wrapper around the client"));
+    assert!(!detect_end_command(
+        "so we have a wrapper around the client"
+    ));
     assert!(!detect_end_command(""));
 }
 

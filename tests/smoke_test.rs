@@ -15,7 +15,8 @@ fn headless_smoke_test_produces_session_artifacts() {
     //   1. prep stage (run_agent calls chat, finish_reason "stop" -> returns text)
     //   2. orchestrator opening turn
     //   3. orchestrator closing turn (after "that's a wrap" voice command)
-    let scripted_llm = "A brief about the project|Welcome! Tell me about yourself.|Great chat, thanks!";
+    let scripted_llm =
+        "A brief about the project|Welcome! Tell me about yourself.|Great chat, thanks!";
 
     // Scripted STT finals: the user says "that's a wrap" which triggers
     // detect_end_command -> VoiceCommand end.
@@ -72,8 +73,9 @@ fn headless_smoke_test_produces_session_artifacts() {
     );
     let convo = std::fs::read_to_string(&convo_path).unwrap();
     // Parse as JSON to verify it's valid.
-    let turns: Vec<serde_json::Value> = serde_json::from_str(&convo)
-        .unwrap_or_else(|e| panic!("conversation.json should be valid JSON: {e}\nContent: {convo}"));
+    let turns: Vec<serde_json::Value> = serde_json::from_str(&convo).unwrap_or_else(|e| {
+        panic!("conversation.json should be valid JSON: {e}\nContent: {convo}")
+    });
     assert!(
         !turns.is_empty(),
         "conversation.json should contain at least one turn"
@@ -86,8 +88,5 @@ fn headless_smoke_test_produces_session_artifacts() {
         transcript_path.display()
     );
     let transcript = std::fs::read_to_string(&transcript_path).unwrap();
-    assert!(
-        !transcript.is_empty(),
-        "transcript.md should not be empty"
-    );
+    assert!(!transcript.is_empty(), "transcript.md should not be empty");
 }

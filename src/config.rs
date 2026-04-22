@@ -4,7 +4,10 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SttBackend { Deepgram, Local }
+pub enum SttBackend {
+    Deepgram,
+    Local,
+}
 
 impl FromStr for SttBackend {
     type Err = anyhow::Error;
@@ -12,13 +15,20 @@ impl FromStr for SttBackend {
         match s.to_ascii_lowercase().as_str() {
             "deepgram" => Ok(Self::Deepgram),
             "local" => Ok(Self::Local),
-            other => Err(anyhow!("unknown STT backend {:?}; valid: deepgram, local", other)),
+            other => Err(anyhow!(
+                "unknown STT backend {:?}; valid: deepgram, local",
+                other
+            )),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TtsBackend { ElevenLabs, Local, Text }
+pub enum TtsBackend {
+    ElevenLabs,
+    Local,
+    Text,
+}
 
 impl FromStr for TtsBackend {
     type Err = anyhow::Error;
@@ -27,7 +37,10 @@ impl FromStr for TtsBackend {
             "elevenlabs" => Ok(Self::ElevenLabs),
             "local" => Ok(Self::Local),
             "text" => Ok(Self::Text),
-            other => Err(anyhow!("unknown TTS backend {:?}; valid: elevenlabs, local, text", other)),
+            other => Err(anyhow!(
+                "unknown TTS backend {:?}; valid: elevenlabs, local, text",
+                other
+            )),
         }
     }
 }
@@ -66,10 +79,18 @@ impl Config {
         }
     }
 
-    pub fn conch_dir(&self) -> PathBuf { self.home.join(".conch") }
-    pub fn sessions_dir(&self) -> PathBuf { self.conch_dir().join("sessions") }
-    pub fn brand_file(&self) -> PathBuf { self.conch_dir().join("brand.md") }
-    pub fn fillers_dir(&self) -> PathBuf { self.conch_dir().join("fillers") }
+    pub fn conch_dir(&self) -> PathBuf {
+        self.home.join(".conch")
+    }
+    pub fn sessions_dir(&self) -> PathBuf {
+        self.conch_dir().join("sessions")
+    }
+    pub fn brand_file(&self) -> PathBuf {
+        self.conch_dir().join("brand.md")
+    }
+    pub fn fillers_dir(&self) -> PathBuf {
+        self.conch_dir().join("fillers")
+    }
     pub fn parakeet_model_dir(&self) -> PathBuf {
         if let Ok(p) = std::env::var("CONCH_PARAKEET_MODEL_DIR") {
             return PathBuf::from(p);
@@ -79,28 +100,66 @@ impl Config {
             .join("parakeet-nemotron-streaming-en-0.6b")
     }
 
-    pub fn openrouter_api_key(&self) -> Option<&str> { self.openrouter_api_key.as_deref() }
-    pub fn anthropic_api_key(&self) -> Option<&str> { self.anthropic_api_key.as_deref() }
-    pub fn deepgram_api_key(&self) -> Option<&str> { self.deepgram_api_key.as_deref() }
-    pub fn elevenlabs_api_key(&self) -> Option<&str> { self.elevenlabs_api_key.as_deref() }
-    pub fn elevenlabs_voice_id(&self) -> &str {
-        self.elevenlabs_voice_id.as_deref().unwrap_or(DEFAULT_ELEVEN_VOICE_ID)
+    pub fn openrouter_api_key(&self) -> Option<&str> {
+        self.openrouter_api_key.as_deref()
     }
-    pub fn github_token(&self) -> Option<&str> { self.github_token.as_deref() }
+    pub fn anthropic_api_key(&self) -> Option<&str> {
+        self.anthropic_api_key.as_deref()
+    }
+    pub fn deepgram_api_key(&self) -> Option<&str> {
+        self.deepgram_api_key.as_deref()
+    }
+    pub fn elevenlabs_api_key(&self) -> Option<&str> {
+        self.elevenlabs_api_key.as_deref()
+    }
+    pub fn elevenlabs_voice_id(&self) -> &str {
+        self.elevenlabs_voice_id
+            .as_deref()
+            .unwrap_or(DEFAULT_ELEVEN_VOICE_ID)
+    }
+    pub fn github_token(&self) -> Option<&str> {
+        self.github_token.as_deref()
+    }
 
     pub fn provider(&self) -> Result<Provider> {
-        self.provider.ok_or_else(|| anyhow!("CONCH_PROVIDER is not set. Set it to one of: anthropic, deepseek, meta, google"))
+        self.provider.ok_or_else(|| {
+            anyhow!(
+                "CONCH_PROVIDER is not set. Set it to one of: anthropic, deepseek, meta, google"
+            )
+        })
     }
 
-    pub fn stt_backend(&self) -> SttBackend { self.stt_backend }
-    pub fn tts_backend(&self) -> TtsBackend { self.tts_backend }
-    pub fn with_stt_backend(mut self, b: SttBackend) -> Self { self.stt_backend = b; self }
-    pub fn with_tts_backend(mut self, b: TtsBackend) -> Self { self.tts_backend = b; self }
+    pub fn stt_backend(&self) -> SttBackend {
+        self.stt_backend
+    }
+    pub fn tts_backend(&self) -> TtsBackend {
+        self.tts_backend
+    }
+    pub fn with_stt_backend(mut self, b: SttBackend) -> Self {
+        self.stt_backend = b;
+        self
+    }
+    pub fn with_tts_backend(mut self, b: TtsBackend) -> Self {
+        self.tts_backend = b;
+        self
+    }
 
-    pub fn from_env_map(home: &Path, env: &std::collections::HashMap<String, String>) -> Result<Self> {
-        let provider = match env.get("CONCH_PROVIDER") { Some(v) => Some(v.parse::<Provider>()?), None => None };
-        let stt_backend = match env.get("CONCH_STT") { Some(v) => v.parse()?, None => SttBackend::Deepgram };
-        let tts_backend = match env.get("CONCH_TTS") { Some(v) => v.parse()?, None => TtsBackend::Local };
+    pub fn from_env_map(
+        home: &Path,
+        env: &std::collections::HashMap<String, String>,
+    ) -> Result<Self> {
+        let provider = match env.get("CONCH_PROVIDER") {
+            Some(v) => Some(v.parse::<Provider>()?),
+            None => None,
+        };
+        let stt_backend = match env.get("CONCH_STT") {
+            Some(v) => v.parse()?,
+            None => SttBackend::Deepgram,
+        };
+        let tts_backend = match env.get("CONCH_TTS") {
+            Some(v) => v.parse()?,
+            None => TtsBackend::Local,
+        };
         Ok(Self {
             home: home.to_path_buf(),
             openrouter_api_key: env.get("OPENROUTER_API_KEY").cloned(),

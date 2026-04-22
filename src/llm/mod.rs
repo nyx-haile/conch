@@ -27,7 +27,10 @@ pub fn resolve(config: &Config, provider: Provider, model: Model) -> Result<(Llm
             let key = config
                 .openrouter_api_key()
                 .ok_or_else(|| anyhow!("OPENROUTER_API_KEY is not set"))?;
-            Ok((LlmClient::openrouter(key), other.slug_for(model).to_string()))
+            Ok((
+                LlmClient::openrouter(key),
+                other.slug_for(model).to_string(),
+            ))
         }
     }
 }
