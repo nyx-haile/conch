@@ -1,8 +1,14 @@
 use conch::stt::{local::LocalStt, SpeechToText, SttConfig, TranscriptEvent};
 use std::path::PathBuf;
+use std::sync::Mutex;
+
+static TEST_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[tokio::test]
 async fn local_stt_errors_when_model_missing_and_download_disabled() {
+    // Process env is shared across tests in this binary; serialize mutations so
+    // the scripted path test cannot race this missing-model assertion.
+    let _env_lock = TEST_ENV_LOCK.lock().unwrap();
     let tmp = tempfile::tempdir().expect("tempdir");
     let stt = LocalStt::new(tmp.path().to_path_buf()).with_auto_download(false);
     // Guard against CI env having scripted finals set — we want the real
@@ -21,10 +27,11 @@ async fn local_stt_errors_when_model_missing_and_download_disabled() {
 
 #[tokio::test]
 async fn local_stt_emits_scripted_final_when_env_set() {
+    let _env_lock = TEST_ENV_LOCK.lock().unwrap();
     // Verifies the test-path is still honored so `conch test` etc. run
     // without any real model on disk.
     let _guard = EnvGuard::set("CONCH_TEST_SCRIPTED_STT_FINALS", "hello world");
-    let stt = LocalStt::new(PathBuf::from("/definitely/not/here"));
+    let stt = LocalStt::new(PathBuf::from("/definitely/not/here")).with_auto_download(false);
     let mut stream = stt.open_stream(&SttConfig::default()).await.unwrap();
     let ev = stream.next_event().await;
     match ev {
