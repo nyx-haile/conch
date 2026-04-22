@@ -16,30 +16,54 @@ static SCRIPTED_LLM_INDEX: AtomicUsize = AtomicUsize::new(0);
 static SCRIPTED_LLM_SCRIPT: OnceLock<Option<String>> = OnceLock::new();
 
 #[derive(Debug, Clone)]
-pub struct OpenRouterClient {
+pub struct ChatCompletionsClient {
     http: Client,
     base_url: String,
     api_key: String,
+    flavor: ChatCompletionsFlavor,
 }
 
-impl OpenRouterClient {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChatCompletionsFlavor {
+    Generic,
+    OpenRouter,
+}
+
+impl ChatCompletionsClient {
     pub fn new(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::with_flavor(api_key, base_url, ChatCompletionsFlavor::Generic)
+    }
+
+    pub fn openrouter(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::with_flavor(api_key, base_url, ChatCompletionsFlavor::OpenRouter)
+    }
+
+    fn with_flavor(
+        api_key: impl Into<String>,
+        base_url: &str,
+        flavor: ChatCompletionsFlavor,
+    ) -> Self {
         Self {
             http: Client::new(),
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: api_key.into(),
+            flavor,
         }
     }
 
     pub async fn chat(&self, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
         let url = format!("{}/chat/completions", self.base_url);
-        let response = self
+        let mut req = self
             .http
             .post(&url)
             .header("authorization", format!("Bearer {}", self.api_key))
-            .header("content-type", "application/json")
-            .header("http-referer", "https://github.com/conch-cli/conch")
-            .header("x-title", "conch")
+            .header("content-type", "application/json");
+        if self.flavor == ChatCompletionsFlavor::OpenRouter {
+            req = req
+                .header("http-referer", "https://github.com/conch-cli/conch")
+                .header("x-title", "conch");
+        }
+        let response = req
             .json(request)
             .send()
             .await
@@ -48,7 +72,11 @@ impl OpenRouterClient {
         let status = response.status();
         if !status.is_success() {
             let body = response.text().await.unwrap_or_default();
-            return Err(anyhow!("openrouter api returned {}: {}", status, body));
+            return Err(anyhow!(
+                "chat completions api returned {}: {}",
+                status,
+                body
+            ));
         }
 
         response
@@ -60,17 +88,29 @@ impl OpenRouterClient {
 
 #[derive(Debug, Clone)]
 pub enum LlmClient {
-    OpenRouter(OpenRouterClient),
+    ChatCompletions(ChatCompletionsClient),
     Anthropic(AnthropicClient),
 }
 
 impl LlmClient {
     pub fn new(api_key: impl Into<String>, base_url: &str) -> Self {
-        Self::OpenRouter(OpenRouterClient::new(api_key, base_url))
+        Self::ChatCompletions(ChatCompletionsClient::new(api_key, base_url))
     }
 
     pub fn openrouter(api_key: impl Into<String>) -> Self {
-        Self::new(api_key, "https://openrouter.ai/api/v1")
+        Self::openrouter_with_base_url(api_key, "https://openrouter.ai/api/v1")
+    }
+
+    pub fn openrouter_with_base_url(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::ChatCompletions(ChatCompletionsClient::openrouter(api_key, base_url))
+    }
+
+    pub fn openai(api_key: impl Into<String>) -> Self {
+        Self::openai_with_base_url(api_key, "https://api.openai.com/v1")
+    }
+
+    pub fn openai_with_base_url(api_key: impl Into<String>, base_url: &str) -> Self {
+        Self::ChatCompletions(ChatCompletionsClient::new(api_key, base_url))
     }
 
     pub fn anthropic(api_key: impl Into<String>) -> Self {
@@ -108,7 +148,7 @@ impl LlmClient {
         }
 
         match self {
-            Self::OpenRouter(c) => c.chat(request).await,
+            Self::ChatCompletions(c) => c.chat(request).await,
             Self::Anthropic(c) => c.chat(request).await,
         }
     }

@@ -1,5 +1,5 @@
 use crate::provider::Provider;
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
@@ -54,6 +54,7 @@ pub struct Config {
     home: PathBuf,
     openrouter_api_key: Option<String>,
     anthropic_api_key: Option<String>,
+    openai_api_key: Option<String>,
     deepgram_api_key: Option<String>,
     elevenlabs_api_key: Option<String>,
     elevenlabs_voice_id: Option<String>,
@@ -69,6 +70,7 @@ impl Config {
             home: home.to_path_buf(),
             openrouter_api_key: None,
             anthropic_api_key: None,
+            openai_api_key: None,
             deepgram_api_key: None,
             elevenlabs_api_key: None,
             elevenlabs_voice_id: None,
@@ -106,6 +108,9 @@ impl Config {
     pub fn anthropic_api_key(&self) -> Option<&str> {
         self.anthropic_api_key.as_deref()
     }
+    pub fn openai_api_key(&self) -> Option<&str> {
+        self.openai_api_key.as_deref()
+    }
     pub fn deepgram_api_key(&self) -> Option<&str> {
         self.deepgram_api_key.as_deref()
     }
@@ -124,7 +129,7 @@ impl Config {
     pub fn provider(&self) -> Result<Provider> {
         self.provider.ok_or_else(|| {
             anyhow!(
-                "CONCH_PROVIDER is not set. Set it to one of: anthropic, deepseek, meta, google"
+                "CONCH_PROVIDER is not set. Set it to one of: anthropic, openai, deepseek, meta, google"
             )
         })
     }
@@ -164,6 +169,12 @@ impl Config {
             home: home.to_path_buf(),
             openrouter_api_key: env.get("OPENROUTER_API_KEY").cloned(),
             anthropic_api_key: env.get("ANTHROPIC_API_KEY").cloned(),
+            openai_api_key: read_secret_from_env_or_file(
+                home,
+                env,
+                "OPENAI_API_KEY",
+                "OPENAI_API_KEY_FILE",
+            )?,
             deepgram_api_key: env.get("DEEPGRAM_API_KEY").cloned(),
             elevenlabs_api_key: env.get("ELEVENLABS_API_KEY").cloned(),
             elevenlabs_voice_id: env.get("CONCH_ELEVEN_VOICE_ID").cloned(),
@@ -181,5 +192,46 @@ impl Config {
             .to_path_buf();
         let env: std::collections::HashMap<String, String> = std::env::vars().collect();
         Self::from_env_map(&home, &env)
+    }
+}
+
+fn read_secret_from_env_or_file(
+    home: &Path,
+    env: &std::collections::HashMap<String, String>,
+    env_key: &str,
+    file_key: &str,
+) -> Result<Option<String>> {
+    if let Some(value) = env.get(env_key) {
+        return Ok(Some(value.clone()));
+    }
+
+    let Some(path) = env.get(file_key) else {
+        return Ok(None);
+    };
+    if path.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let expanded = expand_home(home, path);
+    let secret = std::fs::read_to_string(&expanded)
+        .with_context(|| format!("reading {} from {}", file_key, expanded.display()))?;
+    let trimmed = secret.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!(
+            "{} points to an empty file: {}",
+            file_key,
+            expanded.display()
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn expand_home(home: &Path, value: &str) -> PathBuf {
+    if value == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = value.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        PathBuf::from(value)
     }
 }

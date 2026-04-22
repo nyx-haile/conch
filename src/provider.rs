@@ -5,6 +5,7 @@ use std::str::FromStr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Provider {
     Anthropic,
+    OpenAI,
     DeepSeek,
     Meta,
     Google,
@@ -16,6 +17,10 @@ impl Provider {
             (Self::Anthropic, Model::Haiku) => "anthropic/claude-haiku-4.5",
             (Self::Anthropic, Model::Sonnet) => "anthropic/claude-sonnet-4.6",
             (Self::Anthropic, Model::Opus) => "anthropic/claude-opus-4.6",
+
+            (Self::OpenAI, Model::Haiku) => "gpt-4.1-mini",
+            (Self::OpenAI, Model::Sonnet) => "gpt-4.1",
+            (Self::OpenAI, Model::Opus) => "gpt-5.1",
 
             (Self::DeepSeek, Model::Haiku) => "deepseek/deepseek-chat-v3:free",
             (Self::DeepSeek, Model::Sonnet) => "deepseek/deepseek-chat-v3:free",
@@ -38,11 +43,12 @@ impl FromStr for Provider {
     fn from_str(s: &str) -> Result<Self> {
         match s.to_ascii_lowercase().as_str() {
             "anthropic" => Ok(Self::Anthropic),
+            "openai" => Ok(Self::OpenAI),
             "deepseek" => Ok(Self::DeepSeek),
             "meta" | "llama" => Ok(Self::Meta),
             "google" | "gemini" => Ok(Self::Google),
             other => Err(anyhow!(
-                "unknown provider {:?}; valid values: anthropic, deepseek, meta, google",
+                "unknown provider {:?}; valid values: anthropic, openai, deepseek, meta, google",
                 other
             )),
         }
@@ -63,6 +69,7 @@ mod tests {
             "ANTHROPIC".parse::<Provider>().unwrap(),
             Provider::Anthropic
         );
+        assert_eq!("openai".parse::<Provider>().unwrap(), Provider::OpenAI);
         assert_eq!("deepseek".parse::<Provider>().unwrap(), Provider::DeepSeek);
         assert_eq!("meta".parse::<Provider>().unwrap(), Provider::Meta);
         assert_eq!("llama".parse::<Provider>().unwrap(), Provider::Meta);
@@ -71,7 +78,7 @@ mod tests {
 
     #[test]
     fn errors_on_unknown_provider() {
-        let err = "openai".parse::<Provider>().unwrap_err();
+        let err = "mistral".parse::<Provider>().unwrap_err();
         assert!(err.to_string().contains("unknown provider"));
     }
 
@@ -89,5 +96,12 @@ mod tests {
             Provider::Anthropic.slug_for(Model::Opus),
             "anthropic/claude-opus-4.6"
         );
+    }
+
+    #[test]
+    fn openai_slugs_point_at_native_models() {
+        assert_eq!(Provider::OpenAI.slug_for(Model::Haiku), "gpt-4.1-mini");
+        assert_eq!(Provider::OpenAI.slug_for(Model::Sonnet), "gpt-4.1");
+        assert_eq!(Provider::OpenAI.slug_for(Model::Opus), "gpt-5.1");
     }
 }

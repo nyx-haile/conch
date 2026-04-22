@@ -8,7 +8,7 @@ and emits a written brief. Three depths: `sketch` (Haiku), `talk` (Sonnet),
 
 - **Audio**: `cpal` mic → 16 kHz PCM
 - **STT**: Deepgram streaming (cloud) or `local` (NVIDIA Nemotron 0.6B int8 via `parakeet-rs` + ONNX Runtime)
-- **LLM**: Anthropic native API, or OpenRouter for DeepSeek / Llama / Gemini
+- **LLM**: Anthropic native API, OpenAI native API, or OpenRouter for DeepSeek / Llama / Gemini
 - **TTS**: ElevenLabs (cloud), `piper` (local), or silent text mode
 - **UI**: `ratatui` TUI with live partials + waveform
 - **Sessions**: transcripts + briefs persisted per session; re-exportable
@@ -50,7 +50,9 @@ Once the bundle is cached conch runs fully offline.
 Environment (see `.env.example`):
 
 - `ANTHROPIC_API_KEY` — Anthropic native
-- `OPENROUTER_API_KEY` — non-Anthropic providers
+- `OPENAI_API_KEY` — OpenAI native
+- `OPENAI_API_KEY_FILE` — optional file path containing only the OpenAI key (supports `~/...`)
+- `OPENROUTER_API_KEY` — DeepSeek / Llama / Gemini via OpenRouter
 - `DEEPGRAM_API_KEY` — streaming STT
 - `ELEVENLABS_API_KEY` — premium TTS
 
