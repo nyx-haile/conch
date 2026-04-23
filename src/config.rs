@@ -55,6 +55,7 @@ pub struct Config {
     openrouter_api_key: Option<String>,
     anthropic_api_key: Option<String>,
     openai_api_key: Option<String>,
+    openai_api_key_file: Option<PathBuf>,
     deepgram_api_key: Option<String>,
     elevenlabs_api_key: Option<String>,
     elevenlabs_voice_id: Option<String>,
@@ -71,6 +72,7 @@ impl Config {
             openrouter_api_key: None,
             anthropic_api_key: None,
             openai_api_key: None,
+            openai_api_key_file: None,
             deepgram_api_key: None,
             elevenlabs_api_key: None,
             elevenlabs_voice_id: None,
@@ -110,6 +112,25 @@ impl Config {
     }
     pub fn openai_api_key(&self) -> Option<&str> {
         self.openai_api_key.as_deref()
+    }
+    pub fn resolve_openai_api_key(&self) -> Result<Option<String>> {
+        if let Some(key) = self.openai_api_key() {
+            return Ok(Some(key.to_string()));
+        }
+
+        let Some(path) = &self.openai_api_key_file else {
+            return Ok(None);
+        };
+        let secret = std::fs::read_to_string(path)
+            .with_context(|| format!("reading OPENAI_API_KEY_FILE from {}", path.display()))?;
+        let trimmed = secret.trim();
+        if trimmed.is_empty() {
+            return Err(anyhow!(
+                "OPENAI_API_KEY_FILE points to an empty file: {}",
+                path.display()
+            ));
+        }
+        Ok(Some(trimmed.to_string()))
     }
     pub fn deepgram_api_key(&self) -> Option<&str> {
         self.deepgram_api_key.as_deref()
@@ -169,12 +190,11 @@ impl Config {
             home: home.to_path_buf(),
             openrouter_api_key: env.get("OPENROUTER_API_KEY").cloned(),
             anthropic_api_key: env.get("ANTHROPIC_API_KEY").cloned(),
-            openai_api_key: read_secret_from_env_or_file(
-                home,
-                env,
-                "OPENAI_API_KEY",
-                "OPENAI_API_KEY_FILE",
-            )?,
+            openai_api_key: env.get("OPENAI_API_KEY").cloned(),
+            openai_api_key_file: env
+                .get("OPENAI_API_KEY_FILE")
+                .filter(|path| !path.trim().is_empty())
+                .map(|path| expand_home(home, path)),
             deepgram_api_key: env.get("DEEPGRAM_API_KEY").cloned(),
             elevenlabs_api_key: env.get("ELEVENLABS_API_KEY").cloned(),
             elevenlabs_voice_id: env.get("CONCH_ELEVEN_VOICE_ID").cloned(),
@@ -193,37 +213,6 @@ impl Config {
         let env: std::collections::HashMap<String, String> = std::env::vars().collect();
         Self::from_env_map(&home, &env)
     }
-}
-
-fn read_secret_from_env_or_file(
-    home: &Path,
-    env: &std::collections::HashMap<String, String>,
-    env_key: &str,
-    file_key: &str,
-) -> Result<Option<String>> {
-    if let Some(value) = env.get(env_key) {
-        return Ok(Some(value.clone()));
-    }
-
-    let Some(path) = env.get(file_key) else {
-        return Ok(None);
-    };
-    if path.trim().is_empty() {
-        return Ok(None);
-    }
-
-    let expanded = expand_home(home, path);
-    let secret = std::fs::read_to_string(&expanded)
-        .with_context(|| format!("reading {} from {}", file_key, expanded.display()))?;
-    let trimmed = secret.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow!(
-            "{} points to an empty file: {}",
-            file_key,
-            expanded.display()
-        ));
-    }
-    Ok(Some(trimmed.to_string()))
 }
 
 fn expand_home(home: &Path, value: &str) -> PathBuf {

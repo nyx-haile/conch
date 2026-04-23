@@ -40,6 +40,10 @@ fn renders_listening_state_without_panic() {
         "expected 'conch talk' in:\n{dump}"
     );
     assert!(dump.contains("Brief"), "expected 'Brief' in:\n{dump}");
+    assert!(
+        dump.contains("Hold Space"),
+        "expected push-to-talk hint in:\n{dump}"
+    );
 }
 
 #[test]

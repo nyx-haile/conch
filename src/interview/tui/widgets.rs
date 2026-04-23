@@ -138,7 +138,9 @@ fn render_sidebar(f: &mut Frame, area: Rect, state: &AppState) {
 
 fn render_bottom_bar(f: &mut Frame, area: Rect) {
     f.render_widget(
-        Paragraph::new(" [Space] mic  [Esc] interrupt  [Ctrl+C] quit "),
+        Paragraph::new(
+            " [Hold Space] talk  [Tap Space] toggle mic  [Esc] interrupt  [Ctrl+C] quit ",
+        ),
         area,
     );
 }
@@ -168,7 +170,7 @@ fn status_label(status: Status, banner: Option<&str>) -> Line<'static> {
         ));
     }
     let (glyph, text, color) = match status {
-        Status::Idle => ("✶", "Idle", Color::Gray),
+        Status::Idle => ("✶", "Idle — hold Space to talk", Color::Gray),
         Status::Listening => ("✻", "Listening\u{2026}", Color::Green),
         Status::Thinking => ("✶", "Thinking\u{2026}", Color::Yellow),
         Status::Filling => ("✶", "Thinking\u{2026}", Color::Yellow),

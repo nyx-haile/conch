@@ -58,7 +58,10 @@ fn config_from_env_reads_openai_key_from_file() {
 
     let config = Config::from_env_map(home.path(), &env).unwrap();
 
-    assert_eq!(config.openai_api_key(), Some("sk-openai-file"));
+    assert_eq!(
+        config.resolve_openai_api_key().unwrap().as_deref(),
+        Some("sk-openai-file")
+    );
     assert_eq!(config.provider().unwrap(), Provider::OpenAI);
 }
 

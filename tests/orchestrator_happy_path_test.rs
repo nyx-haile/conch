@@ -166,6 +166,67 @@ async fn user_quit_ends_immediately() {
 }
 
 #[tokio::test]
+async fn empty_record_pass_sets_no_speech_banner_and_returns_idle() {
+    let stt = Arc::new(fakes::FakeStt::new(vec![vec![]]));
+    let tts = Arc::new(fakes::FakeTts);
+    let llm = Arc::new(fakes::FakeLlm::new(vec!["Hi there!".to_string()]));
+
+    let sink = fakes::FakeSink::new();
+    let state = Arc::new(RwLock::new(AppState::new(
+        "No Speech".to_string(),
+        "brief".to_string(),
+    )));
+
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        ..OrchestratorConfig::default()
+    };
+
+    let orch = Orchestrator::new(
+        llm,
+        stt,
+        tts,
+        Box::new(sink),
+        state.clone(),
+        event_rx,
+        config,
+    );
+
+    let handle = tokio::spawn(async move { orch.run().await });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    {
+        let st = state.read().await;
+        assert_eq!(st.status(), Status::Idle);
+        assert_eq!(
+            st.banner(),
+            Some("No speech captured. Hold Space to talk, or tap Space to toggle the mic.")
+        );
+        assert_eq!(
+            st.history().len(),
+            1,
+            "only the opening turn should be present"
+        );
+    }
+
+    event_tx.send(UserEvent::Quit).await.unwrap();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), handle)
+        .await
+        .expect("timed out")
+        .expect("panicked")
+        .expect("error");
+    assert_eq!(result, EndSignal::UserQuit);
+}
+
+#[tokio::test]
 async fn llm_end_session_tool_call() {
     use conch::llm::types::{ChatResponse, Choice, FunctionCall, Message, Role, ToolCall};
 

@@ -27,10 +27,10 @@ pub fn resolve(config: &Config, provider: Provider, model: Model) -> Result<(Llm
         }
         Provider::OpenAI => {
             let key = config
-                .openai_api_key()
+                .resolve_openai_api_key()?
                 .ok_or_else(|| anyhow!("OPENAI_API_KEY or OPENAI_API_KEY_FILE is not set"))?;
             Ok((
-                LlmClient::openai(key),
+                LlmClient::openai(&key),
                 Provider::OpenAI.slug_for(model).to_string(),
             ))
         }

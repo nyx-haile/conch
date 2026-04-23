@@ -230,7 +230,11 @@ impl Orchestrator {
                 }
                 UserEvent::MicToggle => {
                     // ---- Record phase (with speculative STT tracking) ----
-                    self.set_status(Status::Listening).await;
+                    {
+                        let mut st = self.state.write().await;
+                        st.set_banner(None);
+                        st.set_status(Status::Listening);
+                    }
 
                     // Open an STT stream.
                     let stt_config = SttConfig {
@@ -415,7 +419,12 @@ impl Orchestrator {
                         if let Some(h) = speculative_handle {
                             h.abort();
                         }
-                        self.set_status(Status::Idle).await;
+                        let mut st = self.state.write().await;
+                        st.set_banner(Some(
+                            "No speech captured. Hold Space to talk, or tap Space to toggle the mic."
+                                .to_string(),
+                        ));
+                        st.set_status(Status::Idle);
                         continue;
                     }
 
