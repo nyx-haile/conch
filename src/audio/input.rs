@@ -1,5 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
+use cpal::SampleFormat;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -196,38 +197,55 @@ fn build_cpal_input_stream(
     // ALSA backends that reject fixed sizes outright.
     const TARGET_BUFFER_MS: u32 = 30;
     let mut last_err: Option<anyhow::Error> = None;
-    for supported in candidates {
-        let device_rate = supported.sample_rate().0;
-        let device_channels = supported.channels();
-        let buffer_range = *supported.buffer_size();
-        let mut cfg: cpal::StreamConfig = supported.into();
-        let fixed = match buffer_range {
-            cpal::SupportedBufferSize::Range { min, max } => {
-                let target = (device_rate / 1000) * TARGET_BUFFER_MS;
-                Some(cpal::BufferSize::Fixed(target.clamp(min, max)))
+    let candidate_attempts: Vec<InputConfigAttempt> = candidates
+        .into_iter()
+        .map(|supported| {
+            let device_rate = supported.sample_rate().0;
+            let device_channels = supported.channels();
+            let sample_format = supported.sample_format();
+            let buffer_range = *supported.buffer_size();
+            let config: cpal::StreamConfig = supported.into();
+            let fixed_buffer = match buffer_range {
+                cpal::SupportedBufferSize::Range { min, max } => {
+                    let target =
+                        ((device_rate as u64 * TARGET_BUFFER_MS as u64) / 1000).max(1) as u32;
+                    Some(cpal::BufferSize::Fixed(target.clamp(min, max)))
+                }
+                cpal::SupportedBufferSize::Unknown => None,
+            };
+            InputConfigAttempt {
+                config,
+                device_rate,
+                device_channels,
+                sample_format,
+                fixed_buffer,
             }
-            cpal::SupportedBufferSize::Unknown => None,
-        };
-        let buffer_attempts: &[cpal::BufferSize] = match &fixed {
-            Some(f) => &[*f, cpal::BufferSize::Default][..],
-            None => &[cpal::BufferSize::Default][..],
-        };
-        for buf_size in buffer_attempts {
-            cfg.buffer_size = *buf_size;
+        })
+        .collect();
+
+    for prefer_fixed in [true, false] {
+        for attempt in &candidate_attempts {
+            let Some(buffer_size) = attempt.buffer_size_for_pass(prefer_fixed) else {
+                continue;
+            };
+            let mut cfg = attempt.config.clone();
+            cfg.buffer_size = buffer_size;
             match try_build_input_stream(
                 &device,
                 &cfg,
+                attempt.sample_format,
                 frame_ms,
-                device_rate,
-                device_channels,
+                attempt.device_rate,
+                attempt.device_channels,
                 tx.clone(),
                 Arc::clone(&last_err_log_ms),
                 Arc::clone(&err_suppressed),
             ) {
                 Ok(stream) => {
                     tracing::info!(
-                        rate = device_rate,
-                        channels = device_channels,
+                        rate = attempt.device_rate,
+                        channels = attempt.device_channels,
+                        sample_format = %attempt.sample_format,
                         buffer_size = ?cfg.buffer_size,
                         "cpal input stream opened"
                     );
@@ -235,8 +253,9 @@ fn build_cpal_input_stream(
                 }
                 Err(e) => {
                     tracing::debug!(
-                        rate = device_rate,
-                        channels = device_channels,
+                        rate = attempt.device_rate,
+                        channels = attempt.device_channels,
+                        sample_format = %attempt.sample_format,
                         buffer_size = ?cfg.buffer_size,
                         err = %e,
                         "cpal input config attempt failed"
@@ -249,8 +268,83 @@ fn build_cpal_input_stream(
     Err(last_err.unwrap_or_else(|| anyhow::anyhow!("cpal input stream build failed")))
 }
 
+#[derive(Clone)]
+struct InputConfigAttempt {
+    config: cpal::StreamConfig,
+    device_rate: u32,
+    device_channels: u16,
+    sample_format: SampleFormat,
+    fixed_buffer: Option<cpal::BufferSize>,
+}
+
+impl InputConfigAttempt {
+    fn buffer_size_for_pass(&self, prefer_fixed: bool) -> Option<cpal::BufferSize> {
+        match (prefer_fixed, self.fixed_buffer) {
+            (true, Some(size)) => Some(size),
+            (true, None) => None,
+            (false, _) => Some(cpal::BufferSize::Default),
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn try_build_input_stream(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    sample_format: SampleFormat,
+    frame_ms: u32,
+    device_rate: u32,
+    device_channels: u16,
+    tx: tokio::sync::mpsc::UnboundedSender<Frame>,
+    last_err_log_ms: Arc<std::sync::atomic::AtomicU64>,
+    err_suppressed: Arc<std::sync::atomic::AtomicU64>,
+) -> Result<cpal::Stream> {
+    let stream = match sample_format {
+        SampleFormat::F32 => build_input_stream_for_type(
+            device,
+            config,
+            frame_ms,
+            device_rate,
+            device_channels,
+            tx,
+            last_err_log_ms,
+            err_suppressed,
+            |sample: f32| (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16,
+        )?,
+        SampleFormat::I16 => build_input_stream_for_type(
+            device,
+            config,
+            frame_ms,
+            device_rate,
+            device_channels,
+            tx,
+            last_err_log_ms,
+            err_suppressed,
+            |sample: i16| sample,
+        )?,
+        SampleFormat::U16 => build_input_stream_for_type(
+            device,
+            config,
+            frame_ms,
+            device_rate,
+            device_channels,
+            tx,
+            last_err_log_ms,
+            err_suppressed,
+            |sample: u16| (sample as i32 - i16::MAX as i32 - 1) as i16,
+        )?,
+        other => {
+            return Err(anyhow::anyhow!(
+                "unsupported input sample format for CpalMicSource: {other}"
+            ));
+        }
+    };
+    stream.play()?;
+    Ok(stream)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_input_stream_for_type<T, F>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
     frame_ms: u32,
@@ -259,72 +353,168 @@ fn try_build_input_stream(
     tx: tokio::sync::mpsc::UnboundedSender<Frame>,
     last_err_log_ms: Arc<std::sync::atomic::AtomicU64>,
     err_suppressed: Arc<std::sync::atomic::AtomicU64>,
-) -> Result<cpal::Stream> {
+    mut normalize: F,
+) -> Result<cpal::Stream>
+where
+    T: cpal::SizedSample,
+    F: FnMut(T) -> i16 + Send + 'static,
+{
     let samples_per_frame_device =
         ((device_rate as u64 * frame_ms as u64) / 1000) as usize * device_channels as usize;
-    let mut buf: Vec<i16> = Vec::with_capacity(samples_per_frame_device);
+    let mut assembler =
+        InputFrameAssembler::new(device_rate, device_channels, samples_per_frame_device, tx);
 
     let stream = device.build_input_stream(
         config,
-        move |data: &[f32], _: &_| {
-            for &s in data {
-                buf.push((s * i16::MAX as f32) as i16);
-                if buf.len() >= samples_per_frame_device {
-                    let mono: Vec<i16> = if device_channels == 1 {
-                        buf.clone()
-                    } else {
-                        buf.chunks_exact(device_channels as usize)
-                            .map(|c| {
-                                let sum: i32 = c.iter().map(|&s| s as i32).sum();
-                                (sum / device_channels as i32) as i16
-                            })
-                            .collect()
-                    };
-                    let resampled = if device_rate == 16_000 {
-                        mono
-                    } else {
-                        match crate::audio::convert::resample_i16(&mono, device_rate, 16_000, 1) {
-                            Ok(r) => r,
-                            Err(e) => {
-                                tracing::warn!("resample failed, dropping frame: {e}");
-                                buf.clear();
-                                continue;
-                            }
-                        }
-                    };
-                    let _ = tx.send(Frame { pcm: resampled });
-                    buf.clear();
-                }
-            }
+        move |data: &[T], _: &_| {
+            assembler.push_input(data, &mut normalize);
         },
-        move |e| {
-            use std::sync::atomic::Ordering::Relaxed;
-            use std::time::{SystemTime, UNIX_EPOCH};
-            let now_ms = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            let last = last_err_log_ms.load(Relaxed);
-            if now_ms.saturating_sub(last) >= INPUT_ERR_LOG_INTERVAL.as_millis() as u64 {
-                let suppressed = err_suppressed.swap(0, Relaxed);
-                last_err_log_ms.store(now_ms, Relaxed);
-                if suppressed > 0 {
-                    tracing::error!(
-                        suppressed,
-                        "cpal input stream error: {e} (+{suppressed} suppressed in last {}ms)",
-                        INPUT_ERR_LOG_INTERVAL.as_millis()
-                    );
-                } else {
-                    tracing::error!("cpal input stream error: {e}");
-                }
-            } else {
-                err_suppressed.fetch_add(1, Relaxed);
-            }
-        },
+        input_err_fn(last_err_log_ms, err_suppressed),
         None,
     )?;
-    stream.play()?;
     Ok(stream)
+}
+
+fn input_err_fn(
+    last_err_log_ms: Arc<std::sync::atomic::AtomicU64>,
+    err_suppressed: Arc<std::sync::atomic::AtomicU64>,
+) -> impl FnMut(cpal::StreamError) + Send + 'static {
+    move |e| {
+        use std::sync::atomic::Ordering::Relaxed;
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let last = last_err_log_ms.load(Relaxed);
+        if now_ms.saturating_sub(last) >= INPUT_ERR_LOG_INTERVAL.as_millis() as u64 {
+            let suppressed = err_suppressed.swap(0, Relaxed);
+            last_err_log_ms.store(now_ms, Relaxed);
+            if suppressed > 0 {
+                tracing::error!(
+                    suppressed,
+                    "cpal input stream error: {e} (+{suppressed} suppressed in last {}ms)",
+                    INPUT_ERR_LOG_INTERVAL.as_millis()
+                );
+            } else {
+                tracing::error!("cpal input stream error: {e}");
+            }
+        } else {
+            err_suppressed.fetch_add(1, Relaxed);
+        }
+    }
+}
+
+struct InputFrameAssembler {
+    device_rate: u32,
+    device_channels: u16,
+    samples_per_frame_device: usize,
+    tx: tokio::sync::mpsc::UnboundedSender<Frame>,
+    buf: Vec<i16>,
+}
+
+impl InputFrameAssembler {
+    fn new(
+        device_rate: u32,
+        device_channels: u16,
+        samples_per_frame_device: usize,
+        tx: tokio::sync::mpsc::UnboundedSender<Frame>,
+    ) -> Self {
+        Self {
+            device_rate,
+            device_channels,
+            samples_per_frame_device,
+            tx,
+            buf: Vec::with_capacity(samples_per_frame_device),
+        }
+    }
+
+    fn push_input<T, F>(&mut self, data: &[T], normalize: &mut F)
+    where
+        T: Copy,
+        F: FnMut(T) -> i16,
+    {
+        for &sample in data {
+            self.buf.push(normalize(sample));
+            if self.buf.len() >= self.samples_per_frame_device {
+                let mono = self.mix_to_mono();
+                let resampled = self.resample_to_stt_rate(mono);
+                if let Some(pcm) = resampled {
+                    let _ = self.tx.send(Frame { pcm });
+                }
+                self.buf.clear();
+            }
+        }
+    }
+
+    fn mix_to_mono(&self) -> Vec<i16> {
+        if self.device_channels == 1 {
+            return self.buf.clone();
+        }
+        self.buf
+            .chunks_exact(self.device_channels as usize)
+            .map(|chunk| {
+                let sum: i32 = chunk.iter().map(|&sample| sample as i32).sum();
+                (sum / self.device_channels as i32) as i16
+            })
+            .collect()
+    }
+
+    fn resample_to_stt_rate(&self, mono: Vec<i16>) -> Option<Vec<i16>> {
+        if self.device_rate == 16_000 {
+            return Some(mono);
+        }
+        match crate::audio::convert::resample_i16(&mono, self.device_rate, 16_000, 1) {
+            Ok(resampled) => Some(resampled),
+            Err(e) => {
+                tracing::warn!("resample failed, dropping frame: {e}");
+                None
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn input_frame_assembler_passes_through_i16_mono_frames() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut assembler = InputFrameAssembler::new(16_000, 1, 4, tx);
+
+        assembler.push_input(&[100i16, -200, 300, -400], &mut |sample| sample);
+
+        let frame = rx.try_recv().expect("frame");
+        assert_eq!(frame.pcm, vec![100, -200, 300, -400]);
+    }
+
+    #[test]
+    fn input_frame_assembler_downmixes_stereo_before_send() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut assembler = InputFrameAssembler::new(16_000, 2, 4, tx);
+
+        assembler.push_input(&[100i16, -100, 200, 0], &mut |sample| sample);
+
+        let frame = rx.try_recv().expect("frame");
+        assert_eq!(frame.pcm, vec![0, 100]);
+    }
+
+    #[test]
+    fn input_frame_assembler_normalizes_u16_to_centered_i16() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let mut assembler = InputFrameAssembler::new(16_000, 1, 3, tx);
+
+        assembler.push_input(&[0u16, 32768u16, u16::MAX], &mut |sample| {
+            (sample as i32 - i16::MAX as i32 - 1) as i16
+        });
+
+        let frame = rx.try_recv().expect("frame");
+        assert_eq!(frame.pcm.len(), 3);
+        assert!(frame.pcm[0] < 0);
+        assert_eq!(frame.pcm[1], 0);
+        assert!(frame.pcm[2] > 0);
+    }
 }
 
 impl Drop for CpalMicSource {
