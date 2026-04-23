@@ -85,7 +85,13 @@ pub async fn run(
     let sink: Box<dyn crate::audio::output::AudioSink> = if headless {
         Box::new(crate::audio::output::VecSink::new())
     } else {
-        Box::new(crate::audio::output::RodioSink::new_default().context("opening audio output")?)
+        let live_sink: Box<dyn crate::audio::output::AudioSink> = Box::new(
+            crate::audio::output::RodioSink::new_default().context("opening audio output")?,
+        );
+        Box::new(crate::audio::output::RecordingSink::new(
+            live_sink,
+            session.tts_wav_path(),
+        ))
     };
 
     let brand = std::fs::read_to_string(config.brand_file()).ok();

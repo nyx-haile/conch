@@ -53,12 +53,18 @@ impl SpeechToText for DeepgramStt {
         );
 
         let (ws, _) = connect_async(req).await.context("connecting to deepgram")?;
-        Ok(Box::new(DeepgramStream { ws }))
+        Ok(Box::new(DeepgramStream {
+            ws,
+            close_sent: false,
+            closed: false,
+        }))
     }
 }
 
 pub struct DeepgramStream {
     ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    close_sent: bool,
+    closed: bool,
 }
 
 impl std::fmt::Debug for DeepgramStream {
@@ -95,6 +101,9 @@ struct DgWord {
 #[async_trait]
 impl SttStream for DeepgramStream {
     async fn send_frame(&mut self, pcm: &[i16]) -> Result<()> {
+        if self.closed {
+            return Ok(());
+        }
         let bytes: Vec<u8> = pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
         self.ws
             .send(Message::Binary(bytes))
@@ -103,10 +112,24 @@ impl SttStream for DeepgramStream {
     }
 
     async fn end_of_utterance(&mut self) -> Result<()> {
-        self.ws
+        if self.closed || self.close_sent {
+            return Ok(());
+        }
+        match self
+            .ws
             .send(Message::Text(r#"{"type":"CloseStream"}"#.into()))
             .await
-            .context("sending CloseStream")
+        {
+            Ok(()) => {
+                self.close_sent = true;
+                Ok(())
+            }
+            Err(e) if is_close_race(&e) => {
+                self.closed = true;
+                Ok(())
+            }
+            Err(e) => Err(e).context("sending CloseStream"),
+        }
     }
 
     async fn next_event(&mut self) -> Option<TranscriptEvent> {
@@ -146,15 +169,33 @@ impl SttStream for DeepgramStream {
                         Err(_) => continue,
                     }
                 }
-                Ok(Message::Close(_)) | Err(_) => return None,
+                Ok(Message::Close(_)) => {
+                    self.closed = true;
+                    return None;
+                }
+                Err(_) => {
+                    self.closed = true;
+                    return None;
+                }
                 _ => continue,
             }
         }
+        self.closed = true;
         None
     }
 
     async fn close(&mut self) -> Result<()> {
+        self.closed = true;
         let _ = self.ws.close(None).await;
         Ok(())
     }
+}
+
+fn is_close_race(err: &tokio_tungstenite::tungstenite::Error) -> bool {
+    matches!(
+        err,
+        tokio_tungstenite::tungstenite::Error::Protocol(
+            tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing
+        )
+    )
 }

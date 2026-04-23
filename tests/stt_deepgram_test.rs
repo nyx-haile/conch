@@ -98,3 +98,41 @@ async fn deepgram_auth_and_events() {
         events[1]
     );
 }
+
+#[tokio::test]
+async fn deepgram_end_of_utterance_is_ok_after_server_closes() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let url = format!("ws://127.0.0.1:{}/v1/listen", port);
+
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+        while let Some(msg) = ws.next().await {
+            if let Ok(Message::Binary(_)) = msg {
+                ws.close(None).await.unwrap();
+                break;
+            }
+        }
+    });
+
+    let stt = DeepgramStt::new("dg-test-key", &url);
+    let mut stream = stt
+        .open_stream(&SttConfig {
+            sample_rate: 16_000,
+            language: None,
+            punctuate: true,
+        })
+        .await
+        .unwrap();
+
+    stream.send_frame(&[0i16; 320]).await.unwrap();
+    assert!(
+        stream.next_event().await.is_none(),
+        "server closed the stream"
+    );
+    stream.end_of_utterance().await.unwrap();
+    stream.close().await.unwrap();
+
+    server.await.unwrap();
+}

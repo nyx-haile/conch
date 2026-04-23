@@ -54,6 +54,69 @@ impl AudioSink for VecSink {
 }
 
 // ---------------------------------------------------------------------------
+// RecordingSink — forwards PCM to a live sink and lazily records a session wav
+// ---------------------------------------------------------------------------
+
+pub struct RecordingSink {
+    inner: Box<dyn AudioSink>,
+    wav_path: std::path::PathBuf,
+    writer: Option<WavSessionWriter>,
+    sample_rate: Option<u32>,
+}
+
+impl RecordingSink {
+    pub fn new(inner: Box<dyn AudioSink>, wav_path: std::path::PathBuf) -> Self {
+        Self {
+            inner,
+            wav_path,
+            writer: None,
+            sample_rate: None,
+        }
+    }
+
+    fn ensure_writer(&mut self, sample_rate: u32) {
+        if self.writer.is_some() {
+            return;
+        }
+        match WavSessionWriter::create(&self.wav_path, sample_rate, 1) {
+            Ok(writer) => {
+                self.writer = Some(writer);
+                self.sample_rate = Some(sample_rate);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    err = %e,
+                    path = %self.wav_path.display(),
+                    "failed to create session TTS wav"
+                );
+            }
+        }
+    }
+}
+
+impl AudioSink for RecordingSink {
+    fn push(&mut self, pcm: Vec<i16>, sample_rate: u32) -> Result<()> {
+        self.ensure_writer(sample_rate);
+        if let Some(writer) = self.writer.as_mut() {
+            if self.sample_rate == Some(sample_rate) {
+                writer.write_i16(&pcm)?;
+            } else {
+                tracing::warn!(
+                    initial_rate = ?self.sample_rate,
+                    current_rate = sample_rate,
+                    "session TTS wav sample rate changed; skipping wav append"
+                );
+            }
+        }
+        self.inner.push(pcm, sample_rate)
+    }
+
+    fn stop(&mut self) {
+        self.inner.stop();
+    }
+}
+
+// ---------------------------------------------------------------------------
 // PlaybackTap — fans out PCM to an AudioSink and a WAV writer simultaneously
 // ---------------------------------------------------------------------------
 

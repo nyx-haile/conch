@@ -14,6 +14,7 @@ pub fn run(config: &Config, session_id: &str, out: Option<PathBuf>) -> anyhow::R
     let candidates = [
         "brief.md",
         "raw_audio.wav",
+        "tts.wav",
         "transcript.md",
         "edited.md",
         "edited_audio.wav",

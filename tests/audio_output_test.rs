@@ -1,4 +1,4 @@
-use conch::audio::output::{AudioSink, PlaybackTap, VecSink};
+use conch::audio::output::{AudioSink, PlaybackTap, RecordingSink, VecSink};
 use conch::audio::wav::WavSessionWriter;
 use hound::WavReader;
 use tempfile::TempDir;
@@ -33,4 +33,27 @@ fn vec_sink_supports_clear_and_stop() {
     sink.stop();
     sink.push(vec![4, 5], 24_000).unwrap();
     assert_eq!(*handle.lock().unwrap(), vec![1, 2, 3]);
+}
+
+#[test]
+fn recording_sink_writes_session_wav_and_forwards_pcm() {
+    let tmp = TempDir::new().unwrap();
+    let wav_path = tmp.path().join("session-tts.wav");
+
+    let sink = VecSink::new();
+    let sink_handle = sink.collected();
+    let mut sink = RecordingSink::new(Box::new(sink), wav_path.clone());
+
+    sink.push(vec![10i16, 20, 30], 22_050).unwrap();
+    sink.push(vec![40, 50], 22_050).unwrap();
+    drop(sink);
+
+    assert_eq!(
+        sink_handle.lock().unwrap().clone(),
+        vec![10i16, 20, 30, 40, 50]
+    );
+
+    let reader = WavReader::open(&wav_path).unwrap();
+    let samples: Vec<i16> = reader.into_samples::<i16>().map(|r| r.unwrap()).collect();
+    assert_eq!(samples, vec![10, 20, 30, 40, 50]);
 }
