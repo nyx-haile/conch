@@ -9,6 +9,7 @@
 //!   cargo run --example tts_smoke
 //!   cargo run --example tts_smoke -- "custom phrase"
 //!   CONCH_TTS=elevenlabs ELEVENLABS_API_KEY=sk_... cargo run --example tts_smoke
+//!   CONCH_OUTPUT_DEVICE=pulse cargo run --example tts_smoke
 
 use anyhow::{Context, Result};
 use conch::audio::output::{AudioSink, RodioSink};

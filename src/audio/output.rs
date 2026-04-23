@@ -1,5 +1,5 @@
 use crate::audio::wav::WavSessionWriter;
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -155,6 +155,8 @@ impl PlaybackTap {
 // ---------------------------------------------------------------------------
 
 use rodio::buffer::SamplesBuffer;
+use rodio::cpal;
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{DeviceSinkBuilder, Player};
 use std::num::NonZero;
 
@@ -175,22 +177,50 @@ impl RodioSink {
         let (init_tx, init_rx) = std::sync::mpsc::channel::<Result<()>>();
 
         let worker = std::thread::spawn(move || {
-            // `open_default_sink()` tries the default device's default config,
-            // then falls back through every supported config and alternate
-            // device until one opens. On ALSA setups where the default config
-            // is unacceptable (e.g. `snd_pcm_hw_params_set_buffer_size`
-            // invalid arg) this is what lets playback succeed. Rodio's own
-            // errors flow through its tracing feature into our file log.
-            let mut sink_device = match DeviceSinkBuilder::open_default_sink() {
+            let preferred = std::env::var("CONCH_OUTPUT_DEVICE").ok();
+            let (device, meta, reason) = match select_output_device(preferred.as_deref()) {
                 Ok(s) => s,
                 Err(e) => {
-                    let _ = init_tx.send(Err(anyhow::anyhow!("rodio output stream: {e}")));
+                    let _ = init_tx.send(Err(anyhow!("rodio output device: {e}")));
+                    return;
+                }
+            };
+            let builder = match DeviceSinkBuilder::from_device(device) {
+                Ok(builder) => builder,
+                Err(e) => {
+                    let _ = init_tx.send(Err(anyhow!("rodio output stream: {e}")));
+                    return;
+                }
+            };
+            let mut sink_device = match builder
+                .with_error_callback(|err| {
+                    tracing::error!(target: "conch::audio", "rodio output stream error: {err}");
+                })
+                .open_sink_or_fallback()
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = init_tx.send(Err(anyhow!("rodio output stream: {e}")));
                     return;
                 }
             };
             sink_device.log_on_drop(false);
 
+            let cfg = *sink_device.config();
+            tracing::info!(
+                target: "conch::audio",
+                device = %meta.name,
+                driver = ?meta.driver,
+                reason = %reason,
+                channels = cfg.channel_count().get(),
+                sample_rate = cfg.sample_rate().get(),
+                buffer_size = ?cfg.buffer_size(),
+                sample_format = %cfg.sample_format(),
+                "rodio output sink opened"
+            );
+
             let player = Player::connect_new(sink_device.mixer());
+            player.play();
 
             let _ = init_tx.send(Ok(()));
 
@@ -228,6 +258,189 @@ impl RodioSink {
             Ok(Err(e)) => Err(e),
             Err(_) => Err(anyhow::anyhow!("rodio worker thread died during init")),
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct OutputDeviceMeta {
+    name: String,
+    driver: Option<String>,
+    is_default: bool,
+}
+
+impl OutputDeviceMeta {
+    fn matches_query(&self, query: &str) -> bool {
+        let q = query.to_ascii_lowercase();
+        self.name.to_ascii_lowercase().contains(&q)
+            || self
+                .driver
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains(&q)
+    }
+
+    fn is_null(&self) -> bool {
+        self.driver.as_deref() == Some("null")
+            || self
+                .name
+                .to_ascii_lowercase()
+                .contains("discard all samples")
+    }
+
+    fn is_generic_default(&self) -> bool {
+        self.driver.as_deref() == Some("default") || self.name == "Default Audio Device"
+    }
+
+    fn is_server_device(&self) -> bool {
+        matches!(self.driver.as_deref(), Some("pulse") | Some("pipewire"))
+    }
+}
+
+fn choose_output_device_index(
+    devices: &[OutputDeviceMeta],
+    preferred: Option<&str>,
+) -> anyhow::Result<(usize, &'static str)> {
+    if let Some(query) = preferred.filter(|q| !q.trim().is_empty()) {
+        if let Some((idx, _)) = devices
+            .iter()
+            .enumerate()
+            .find(|(_, meta)| !meta.is_null() && meta.matches_query(query))
+        {
+            return Ok((idx, "preferred-env"));
+        }
+        return Err(anyhow!(
+            "no output device matched CONCH_OUTPUT_DEVICE={query:?}"
+        ));
+    }
+
+    let default_idx = devices
+        .iter()
+        .position(|meta| meta.is_default && !meta.is_null());
+    if let Some(idx) = default_idx {
+        if !devices[idx].is_generic_default() {
+            return Ok((idx, "system-default"));
+        }
+    }
+
+    if let Some((idx, _)) = devices
+        .iter()
+        .enumerate()
+        .find(|(_, meta)| !meta.is_null() && meta.is_server_device())
+    {
+        return Ok((idx, "server-device"));
+    }
+
+    if let Some(idx) = default_idx {
+        return Ok((idx, "generic-default"));
+    }
+
+    devices
+        .iter()
+        .enumerate()
+        .find(|(_, meta)| !meta.is_null())
+        .map(|(idx, _)| (idx, "first-non-null"))
+        .ok_or_else(|| anyhow!("no usable output device available"))
+}
+
+fn select_output_device(
+    preferred: Option<&str>,
+) -> anyhow::Result<(cpal::Device, OutputDeviceMeta, &'static str)> {
+    let host = cpal::default_host();
+    let default_key = host
+        .default_output_device()
+        .and_then(|device| device.description().ok())
+        .map(|desc| {
+            (
+                desc.name().to_string(),
+                desc.driver().map(|d| d.to_string()),
+            )
+        });
+
+    let mut devices = Vec::new();
+    for device in host.output_devices().context("listing output devices")? {
+        let desc = device.description().context("describing output device")?;
+        let key = (
+            desc.name().to_string(),
+            desc.driver().map(|d| d.to_string()),
+        );
+        let meta = OutputDeviceMeta {
+            name: desc.name().to_string(),
+            driver: desc.driver().map(|d| d.to_string()),
+            is_default: default_key.as_ref() == Some(&key),
+        };
+        devices.push((device, meta));
+    }
+
+    let metas: Vec<OutputDeviceMeta> = devices.iter().map(|(_, meta)| meta.clone()).collect();
+    let (idx, reason) = choose_output_device_index(&metas, preferred)?;
+    let (device, meta) = devices
+        .into_iter()
+        .nth(idx)
+        .ok_or_else(|| anyhow!("selected output device index out of bounds"))?;
+    Ok((device, meta, reason))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{choose_output_device_index, OutputDeviceMeta};
+
+    #[test]
+    fn output_device_prefers_explicit_env_match() {
+        let devices = vec![
+            OutputDeviceMeta {
+                name: "Default Audio Device".to_string(),
+                driver: Some("default".to_string()),
+                is_default: true,
+            },
+            OutputDeviceMeta {
+                name: "PulseAudio Sound Server".to_string(),
+                driver: Some("pulse".to_string()),
+                is_default: false,
+            },
+        ];
+        let (idx, reason) = choose_output_device_index(&devices, Some("pulse")).unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(reason, "preferred-env");
+    }
+
+    #[test]
+    fn output_device_prefers_server_device_over_generic_default() {
+        let devices = vec![
+            OutputDeviceMeta {
+                name: "Default Audio Device".to_string(),
+                driver: Some("default".to_string()),
+                is_default: true,
+            },
+            OutputDeviceMeta {
+                name: "PulseAudio Sound Server".to_string(),
+                driver: Some("pulse".to_string()),
+                is_default: false,
+            },
+        ];
+        let (idx, reason) = choose_output_device_index(&devices, None).unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(reason, "server-device");
+    }
+
+    #[test]
+    fn output_device_skips_null_driver() {
+        let devices = vec![
+            OutputDeviceMeta {
+                name: "Discard all samples (playback) or generate zero samples (capture)"
+                    .to_string(),
+                driver: Some("null".to_string()),
+                is_default: true,
+            },
+            OutputDeviceMeta {
+                name: "Built-in Audio".to_string(),
+                driver: Some("hw:CARD=0,DEV=0".to_string()),
+                is_default: false,
+            },
+        ];
+        let (idx, reason) = choose_output_device_index(&devices, None).unwrap();
+        assert_eq!(idx, 1);
+        assert_eq!(reason, "first-non-null");
     }
 }
 

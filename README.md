@@ -53,6 +53,7 @@ Environment (see `.env.example`):
 - `OPENAI_API_KEY` — OpenAI native
 - `OPENAI_API_KEY_FILE` — optional file path containing only the OpenAI key (supports `~/...`)
 - `OPENROUTER_API_KEY` — DeepSeek / Llama / Gemini via OpenRouter
+- `CONCH_OUTPUT_DEVICE` — optional substring match for the live playback device/driver (e.g. `pulse`, `pipewire`, `hdmi`)
 - `DEEPGRAM_API_KEY` — streaming STT
 - `ELEVENLABS_API_KEY` — premium TTS
 
