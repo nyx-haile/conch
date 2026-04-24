@@ -171,9 +171,7 @@ impl HoldFsm {
         hold_threshold: Duration,
         backoff: Duration,
     ) -> Option<MicEdge> {
-        let Some(at) = self.press_at.take() else {
-            return None;
-        };
+        let at = self.press_at.take()?;
         let held = now.duration_since(at);
         if held >= hold_threshold {
             self.stop_deadline = Some(now + backoff);

@@ -205,15 +205,14 @@ async fn run_tui(
     // fall back to legacy tap-toggle if the terminal does not support it.
     let hold_mode = supports_keyboard_enhancement().unwrap_or(false);
     let mut pop_keyboard_flags = false;
-    if hold_mode {
-        if crossterm::execute!(
+    if hold_mode
+        && crossterm::execute!(
             std::io::stdout(),
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::REPORT_EVENT_TYPES)
         )
         .is_ok()
-        {
-            pop_keyboard_flags = true;
-        }
+    {
+        pop_keyboard_flags = true;
     }
     // Guard ensures cleanup even if we bail via `?` below.
     let _guard = TerminalGuard { pop_keyboard_flags };

@@ -474,6 +474,24 @@ impl InputFrameAssembler {
     }
 }
 
+impl Drop for CpalMicSource {
+    fn drop(&mut self) {
+        if let Some(tx) = self.shutdown.take() {
+            let _ = tx.send(());
+        }
+        if let Some(handle) = self.worker.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+#[async_trait]
+impl MicSource for CpalMicSource {
+    async fn next_frame(&mut self) -> Option<Frame> {
+        self.rx.recv().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,23 +532,5 @@ mod tests {
         assert!(frame.pcm[0] < 0);
         assert_eq!(frame.pcm[1], 0);
         assert!(frame.pcm[2] > 0);
-    }
-}
-
-impl Drop for CpalMicSource {
-    fn drop(&mut self) {
-        if let Some(tx) = self.shutdown.take() {
-            let _ = tx.send(());
-        }
-        if let Some(handle) = self.worker.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-#[async_trait]
-impl MicSource for CpalMicSource {
-    async fn next_frame(&mut self) -> Option<Frame> {
-        self.rx.recv().await
     }
 }

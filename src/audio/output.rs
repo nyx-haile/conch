@@ -381,6 +381,28 @@ fn select_output_device(
     Ok((device, meta, reason))
 }
 
+impl Drop for RodioSink {
+    fn drop(&mut self) {
+        let _ = self.cmd_tx.send(RodioCmd::Shutdown);
+        if let Some(handle) = self.worker.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl AudioSink for RodioSink {
+    fn push(&mut self, pcm: Vec<i16>, sample_rate: u32) -> Result<()> {
+        self.cmd_tx
+            .send(RodioCmd::Push { pcm, sample_rate })
+            .map_err(|_| anyhow::anyhow!("rodio worker thread gone"))?;
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        let _ = self.cmd_tx.send(RodioCmd::Stop);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{choose_output_device_index, OutputDeviceMeta};
@@ -441,27 +463,5 @@ mod tests {
         let (idx, reason) = choose_output_device_index(&devices, None).unwrap();
         assert_eq!(idx, 1);
         assert_eq!(reason, "first-non-null");
-    }
-}
-
-impl Drop for RodioSink {
-    fn drop(&mut self) {
-        let _ = self.cmd_tx.send(RodioCmd::Shutdown);
-        if let Some(handle) = self.worker.take() {
-            let _ = handle.join();
-        }
-    }
-}
-
-impl AudioSink for RodioSink {
-    fn push(&mut self, pcm: Vec<i16>, sample_rate: u32) -> Result<()> {
-        self.cmd_tx
-            .send(RodioCmd::Push { pcm, sample_rate })
-            .map_err(|_| anyhow::anyhow!("rodio worker thread gone"))?;
-        Ok(())
-    }
-
-    fn stop(&mut self) {
-        let _ = self.cmd_tx.send(RodioCmd::Stop);
     }
 }
