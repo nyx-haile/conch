@@ -6,6 +6,8 @@
 
 pub mod contracts;
 pub mod data;
+pub mod ui;
 
 pub use contracts::*;
 pub use data::*;
+pub use ui::*;
