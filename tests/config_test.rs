@@ -33,6 +33,18 @@ fn config_from_env_reads_api_keys_and_provider() {
 }
 
 #[test]
+#[test]
+fn config_from_env_accepts_openrouter_gateway_alias() {
+    let home = PathBuf::from("/tmp/fake-home");
+    let mut env = std::collections::HashMap::new();
+    env.insert("CONCH_PROVIDER".to_string(), "grok".to_string());
+    env.insert("OPENROUTER_API_KEY".to_string(), "sk-or-test".to_string());
+
+    let config = Config::from_env_map(&home, &env).unwrap();
+
+    assert_eq!(config.provider().unwrap(), Provider::OpenRouter);
+}
+
 fn config_from_env_errors_on_unknown_provider() {
     let home = PathBuf::from("/tmp/fake-home");
     let mut env = std::collections::HashMap::new();

@@ -8,7 +8,7 @@ and emits a written brief. Three depths: `sketch` (Haiku), `talk` (Sonnet),
 
 - **Audio**: `cpal` mic → 16 kHz PCM
 - **STT**: Deepgram streaming (cloud) or `local` (NVIDIA Nemotron 0.6B int8 via `parakeet-rs` + ONNX Runtime)
-- **LLM**: Anthropic native API, OpenAI native API, or OpenRouter for DeepSeek / Llama / Gemini
+- **LLM**: OpenRouter launch gateway (Grok default + paid model catalog), Anthropic native API, OpenAI native API, or routed DeepSeek / Llama / Gemini
 - **TTS**: ElevenLabs (cloud), `piper` (local), or silent text mode
 - **UI**: `ratatui` TUI with live partials + waveform
 - **Sessions**: transcripts + briefs persisted per session; re-exportable
@@ -52,10 +52,18 @@ Environment (see `.env.example`):
 - `ANTHROPIC_API_KEY` — Anthropic native
 - `OPENAI_API_KEY` — OpenAI native
 - `OPENAI_API_KEY_FILE` — optional file path containing only the OpenAI key (supports `~/...`)
-- `OPENROUTER_API_KEY` — DeepSeek / Llama / Gemini via OpenRouter
+- `OPENROUTER_API_KEY` — OpenRouter launch gateway (`CONCH_PROVIDER=openrouter` or `grok`) and routed DeepSeek / Llama / Gemini
 - `CONCH_OUTPUT_DEVICE` — optional substring match for the live playback device/driver (e.g. `pulse`, `pipewire`, `hdmi`)
 - `DEEPGRAM_API_KEY` — streaming STT
 - `ELEVENLABS_API_KEY` — premium TTS
+
+
+### OpenRouter model gateway
+
+Use `CONCH_PROVIDER=openrouter` (or `grok`) to route through the launch
+OpenRouter catalog. The default low-cost/free-tier user model is Grok 4 Fast
+(`x-ai/grok-4-fast`); deeper modes use paid/BYOK catalog entries and should be
+gated by server-side entitlements in the web launch path.
 
 ## Credits & inspiration
 

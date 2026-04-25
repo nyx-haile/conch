@@ -1,3 +1,4 @@
+use crate::llm::catalog::{openrouter_slug_for_depth, OPENROUTER_FREE_TIER_DEFAULT_SLUG};
 use crate::model::Model;
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
@@ -6,6 +7,7 @@ use std::str::FromStr;
 pub enum Provider {
     Anthropic,
     OpenAI,
+    OpenRouter,
     DeepSeek,
     Meta,
     Google,
@@ -21,6 +23,8 @@ impl Provider {
             (Self::OpenAI, Model::Haiku) => "gpt-4.1-mini",
             (Self::OpenAI, Model::Sonnet) => "gpt-4.1",
             (Self::OpenAI, Model::Opus) => "gpt-5.1",
+
+            (Self::OpenRouter, model) => openrouter_slug_for_depth(model),
 
             (Self::DeepSeek, Model::Haiku) => "deepseek/deepseek-chat-v3:free",
             (Self::DeepSeek, Model::Sonnet) => "deepseek/deepseek-chat-v3:free",
@@ -44,11 +48,12 @@ impl FromStr for Provider {
         match s.to_ascii_lowercase().as_str() {
             "anthropic" => Ok(Self::Anthropic),
             "openai" => Ok(Self::OpenAI),
+            "openrouter" | "grok" | "xai" | "x-ai" => Ok(Self::OpenRouter),
             "deepseek" => Ok(Self::DeepSeek),
             "meta" | "llama" => Ok(Self::Meta),
             "google" | "gemini" => Ok(Self::Google),
             other => Err(anyhow!(
-                "unknown provider {:?}; valid values: anthropic, openai, deepseek, meta, google",
+                "unknown provider {:?}; valid values: anthropic, openai, openrouter, grok, deepseek, meta, google",
                 other
             )),
         }
@@ -70,6 +75,11 @@ mod tests {
             Provider::Anthropic
         );
         assert_eq!("openai".parse::<Provider>().unwrap(), Provider::OpenAI);
+        assert_eq!(
+            "openrouter".parse::<Provider>().unwrap(),
+            Provider::OpenRouter
+        );
+        assert_eq!("grok".parse::<Provider>().unwrap(), Provider::OpenRouter);
         assert_eq!("deepseek".parse::<Provider>().unwrap(), Provider::DeepSeek);
         assert_eq!("meta".parse::<Provider>().unwrap(), Provider::Meta);
         assert_eq!("llama".parse::<Provider>().unwrap(), Provider::Meta);
@@ -95,6 +105,14 @@ mod tests {
         assert_eq!(
             Provider::Anthropic.slug_for(Model::Opus),
             "anthropic/claude-opus-4.6"
+        );
+    }
+
+    #[test]
+    fn openrouter_gateway_defaults_to_grok_for_fast_depth() {
+        assert_eq!(
+            Provider::OpenRouter.slug_for(Model::Haiku),
+            OPENROUTER_FREE_TIER_DEFAULT_SLUG
         );
     }
 

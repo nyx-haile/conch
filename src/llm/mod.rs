@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod catalog;
 pub mod client;
 pub mod types;
 
@@ -13,7 +14,8 @@ use anyhow::{anyhow, Result};
 /// `Provider::Anthropic` uses the native Anthropic API with `ANTHROPIC_API_KEY`.
 /// `Provider::OpenAI` uses the native OpenAI Chat Completions API with
 /// `OPENAI_API_KEY` or `OPENAI_API_KEY_FILE`.
-/// All other providers route through OpenRouter with `OPENROUTER_API_KEY`.
+/// `Provider::OpenRouter` and routed model-family aliases use OpenRouter with
+/// `OPENROUTER_API_KEY`.
 pub fn resolve(config: &Config, provider: Provider, model: Model) -> Result<(LlmClient, String)> {
     match provider {
         Provider::Anthropic => {

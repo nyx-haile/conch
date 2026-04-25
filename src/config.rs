@@ -159,7 +159,7 @@ impl Config {
     pub fn provider(&self) -> Result<Provider> {
         self.provider.ok_or_else(|| {
             anyhow!(
-                "CONCH_PROVIDER is not set. Set it to one of: anthropic, openai, deepseek, meta, google"
+                "CONCH_PROVIDER is not set. Set it to one of: anthropic, openai, openrouter, grok, deepseek, meta, google"
             )
         })
     }
