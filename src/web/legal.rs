@@ -4,7 +4,7 @@
 //! must be reviewed by counsel and populated with the final company identity
 //! before accepting public payments.
 
-use crate::billing::{BILLING_DISCLOSURE, STRIPE_CARD_STORAGE_DISCLOSURE};
+use super::billing::{BILLING_DISCLOSURE, STRIPE_CARD_STORAGE_DISCLOSURE};
 use serde::{Deserialize, Serialize};
 
 pub const COMPANY_LEGAL_NAME_PLACEHOLDER: &str = "Conch Legal Entity TBD";

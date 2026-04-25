@@ -4,7 +4,7 @@
 //! workspace, required legal acceptance, then Stripe setup-mode card
 //! verification before trial credits are provisioned.
 
-use crate::billing::{trial_setup_checkout, StripeCheckoutSpec, BILLING_DISCLOSURE};
+use super::billing::{trial_setup_checkout, StripeCheckoutSpec, BILLING_DISCLOSURE};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

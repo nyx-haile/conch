@@ -1,21 +1,30 @@
-#[path = "../src/web/billing.rs"]
-mod billing;
-#[path = "../src/web/auth.rs"]
-mod auth;
-#[path = "../src/web/legal.rs"]
-mod legal;
+mod web {
+    pub mod billing {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/billing.rs"));
+    }
 
-use auth::{
-    start_signup, AccountStatus, AuthError, SignupRequest, WorkspaceTier,
-    CURRENT_PRIVACY_VERSION, CURRENT_RECORDING_CONSENT_VERSION, CURRENT_TERMS_VERSION,
+    pub mod auth {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/auth.rs"));
+    }
+
+    pub mod legal {
+        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/legal.rs"));
+    }
+}
+
+use web::{auth, legal};
+
+use chrono::{Duration, TimeZone, Utc};
+use web::auth::{
+    start_signup, AccountStatus, AuthError, SignupRequest, WorkspaceTier, CURRENT_PRIVACY_VERSION,
+    CURRENT_RECORDING_CONSENT_VERSION, CURRENT_TERMS_VERSION,
 };
-use billing::{
+use web::billing::{
     prepaid_pack_checkout, trial_setup_checkout, BillingError, BillingLedger, PrepaidPack,
     SetupIntentUsage, StripeCheckoutMode, StripeWebhookEvent, WebhookOutcome,
     STRIPE_CARD_STORAGE_DISCLOSURE, TRIAL_DAYS, TRIAL_STT_MINUTES,
     UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY,
 };
-use chrono::{Duration, TimeZone, Utc};
 
 fn valid_signup(email: &str) -> SignupRequest {
     SignupRequest {
@@ -36,7 +45,10 @@ fn setup_mode_checkout_is_card_gate_not_charge_or_subscription() {
     );
 
     assert_eq!(checkout.mode, StripeCheckoutMode::Setup);
-    assert_eq!(checkout.setup_intent_usage, Some(SetupIntentUsage::OnSession));
+    assert_eq!(
+        checkout.setup_intent_usage,
+        Some(SetupIntentUsage::OnSession)
+    );
     assert!(checkout.line_items.is_empty());
     assert!(!checkout.allows_subscription);
     assert!(!checkout.allows_automatic_charge);
@@ -49,9 +61,24 @@ fn setup_mode_checkout_is_card_gate_not_charge_or_subscription() {
 #[test]
 fn prepaid_packs_are_one_time_payment_checkouts() {
     let cases = [
-        (PrepaidPack::Starter, 2_900, 1_000, "CONCH_STRIPE_STARTER_PRICE_ID"),
-        (PrepaidPack::Team, 19_900, 10_000, "CONCH_STRIPE_TEAM_PRICE_ID"),
-        (PrepaidPack::Pilot, 49_900, 30_000, "CONCH_STRIPE_PILOT_PRICE_ID"),
+        (
+            PrepaidPack::Starter,
+            2_900,
+            1_000,
+            "CONCH_STRIPE_STARTER_PRICE_ID",
+        ),
+        (
+            PrepaidPack::Team,
+            19_900,
+            10_000,
+            "CONCH_STRIPE_TEAM_PRICE_ID",
+        ),
+        (
+            PrepaidPack::Pilot,
+            49_900,
+            30_000,
+            "CONCH_STRIPE_PILOT_PRICE_ID",
+        ),
     ];
 
     for (pack, cents, minutes, price_env) in cases {
@@ -109,7 +136,10 @@ fn setup_webhook_grants_trial_once_and_sets_card_detach_date() {
     assert!(ledger.trial_card_verified);
     assert_eq!(ledger.trial_minutes_remaining, TRIAL_STT_MINUTES);
     assert_eq!(ledger.grants.len(), 1);
-    assert_eq!(ledger.grants[0].expires_at, now + Duration::days(TRIAL_DAYS));
+    assert_eq!(
+        ledger.grants[0].expires_at,
+        now + Duration::days(TRIAL_DAYS)
+    );
     assert_eq!(
         ledger.grants[0].payment_method_detach_after,
         Some(now + Duration::days(TRIAL_DAYS + UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY))
@@ -211,7 +241,9 @@ fn signup_requires_current_legal_acceptance_before_card_gate() {
     assert_eq!(onboarding.email, "founder@example.com");
     assert_eq!(onboarding.status, AccountStatus::PendingCardSetup);
     assert_eq!(onboarding.tier, WorkspaceTier::Trial);
-    assert!(onboarding.billing_disclosure.contains("No automatic charge"));
+    assert!(onboarding
+        .billing_disclosure
+        .contains("No automatic charge"));
 
     let checkout = onboarding.checkout_for_card_gate("success", "cancel");
     assert_eq!(checkout.mode, StripeCheckoutMode::Setup);
