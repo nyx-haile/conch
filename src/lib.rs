@@ -10,3 +10,4 @@ pub mod provider;
 pub mod session;
 pub mod stt;
 pub mod tts;
+pub mod web;
