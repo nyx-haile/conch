@@ -283,9 +283,10 @@ impl RealtimeSession {
                 self.require_consent()?;
                 self.set_status(SessionStatus::Listening, None)
             }
-            ClientEvent::AssistantInterrupt => {
-                self.set_status(SessionStatus::Interrupted, Some("Assistant interrupted".into()))
-            }
+            ClientEvent::AssistantInterrupt => self.set_status(
+                SessionStatus::Interrupted,
+                Some("Assistant interrupted".into()),
+            ),
             ClientEvent::ModelChange { model_slug } => {
                 let model_slug = model_slug.trim();
                 if model_slug.is_empty() || model_slug.len() > 160 {
@@ -317,10 +318,9 @@ impl RealtimeSession {
 
     pub fn apply_transcript_event(&mut self, event: TranscriptEvent) -> Vec<ServerEvent> {
         match event {
-            TranscriptEvent::Partial { text, stability } => vec![ServerEvent::TranscriptPartial {
-                text,
-                stability,
-            }],
+            TranscriptEvent::Partial { text, stability } => {
+                vec![ServerEvent::TranscriptPartial { text, stability }]
+            }
             TranscriptEvent::Final { text, words } => {
                 let turn_id = self.next_turn_id();
                 vec![ServerEvent::TranscriptFinal {
@@ -357,11 +357,7 @@ impl RealtimeSession {
         vec![event, ServerEvent::UsageUpdated(self.usage.clone())]
     }
 
-    pub fn tts_audio_event(
-        &mut self,
-        pcm: &[i16],
-        sample_rate: u32,
-    ) -> Result<Vec<ServerEvent>> {
+    pub fn tts_audio_event(&mut self, pcm: &[i16], sample_rate: u32) -> Result<Vec<ServerEvent>> {
         if sample_rate < MIN_AUDIO_SAMPLE_RATE || sample_rate > MAX_AUDIO_SAMPLE_RATE {
             return Err(anyhow!("unsupported TTS sample rate: {sample_rate}"));
         }
@@ -417,18 +413,36 @@ impl RealtimeSession {
             ));
         }
 
+        let waveform_rms = if frame.encoding == AudioEncoding::Pcm16 {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(frame.chunk.as_bytes())
+                .map_err(|_| {
+                    ProtocolError::new(
+                        "bad_audio_frame",
+                        false,
+                        "pcm16 audio frame must be valid base64",
+                    )
+                })?;
+            if bytes.len() % 2 != 0 {
+                return Err(ProtocolError::new(
+                    "bad_audio_frame",
+                    false,
+                    "pcm16 audio frame must contain whole i16 samples",
+                ));
+            }
+            Some(pcm16_rms(&bytes))
+        } else {
+            None
+        };
+
         self.next_audio_sequence += 1;
         self.status = SessionStatus::Listening;
         let mut events = vec![ServerEvent::StatusChanged {
             status: SessionStatus::Listening,
             banner: None,
         }];
-        if frame.encoding == AudioEncoding::Pcm16 {
-            if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(frame.chunk) {
-                events.push(ServerEvent::WaveformLevel {
-                    rms: pcm16_rms(&bytes),
-                });
-            }
+        if let Some(rms) = waveform_rms {
+            events.push(ServerEvent::WaveformLevel { rms });
         }
         Ok(events)
     }

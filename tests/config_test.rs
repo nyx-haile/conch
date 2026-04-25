@@ -130,3 +130,28 @@ fn config_errors_on_unknown_stt_backend() {
     let err = Config::from_env_map(&home, &env).unwrap_err();
     assert!(err.to_string().contains("unknown STT backend"));
 }
+
+#[test]
+fn config_supports_deepgram_tts_backend_and_model_override() {
+    let home = PathBuf::from("/tmp/fake-home");
+    let mut env = std::collections::HashMap::new();
+    env.insert("CONCH_TTS".to_string(), "deepgram".to_string());
+    env.insert(
+        "CONCH_DEEPGRAM_TTS_MODEL".to_string(),
+        "aura-2-asteria-en".to_string(),
+    );
+
+    let config = Config::from_env_map(&home, &env).unwrap();
+
+    assert_eq!(config.tts_backend(), TtsBackend::Deepgram);
+    assert_eq!(config.deepgram_tts_model(), "aura-2-asteria-en");
+}
+
+#[test]
+fn config_errors_on_unknown_tts_backend() {
+    let home = PathBuf::from("/tmp/fake-home");
+    let mut env = std::collections::HashMap::new();
+    env.insert("CONCH_TTS".to_string(), "robot".to_string());
+    let err = Config::from_env_map(&home, &env).unwrap_err();
+    assert!(err.to_string().contains("unknown TTS backend"));
+}
