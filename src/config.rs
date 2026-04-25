@@ -25,6 +25,7 @@ impl FromStr for SttBackend {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TtsBackend {
+    Deepgram,
     ElevenLabs,
     Local,
     Text,
@@ -34,11 +35,12 @@ impl FromStr for TtsBackend {
     type Err = anyhow::Error;
     fn from_str(s: &str) -> Result<Self> {
         match s.to_ascii_lowercase().as_str() {
+            "deepgram" => Ok(Self::Deepgram),
             "elevenlabs" => Ok(Self::ElevenLabs),
             "local" => Ok(Self::Local),
             "text" => Ok(Self::Text),
             other => Err(anyhow!(
-                "unknown TTS backend {:?}; valid: elevenlabs, local, text",
+                "unknown TTS backend {:?}; valid: deepgram, elevenlabs, local, text",
                 other
             )),
         }
@@ -59,6 +61,7 @@ pub struct Config {
     deepgram_api_key: Option<String>,
     elevenlabs_api_key: Option<String>,
     elevenlabs_voice_id: Option<String>,
+    deepgram_tts_model: Option<String>,
     github_token: Option<String>,
     provider: Option<Provider>,
     stt_backend: SttBackend,
@@ -76,6 +79,7 @@ impl Config {
             deepgram_api_key: None,
             elevenlabs_api_key: None,
             elevenlabs_voice_id: None,
+            deepgram_tts_model: None,
             github_token: None,
             provider: None,
             stt_backend: SttBackend::Deepgram,
@@ -143,6 +147,11 @@ impl Config {
             .as_deref()
             .unwrap_or(DEFAULT_ELEVEN_VOICE_ID)
     }
+    pub fn deepgram_tts_model(&self) -> &str {
+        self.deepgram_tts_model
+            .as_deref()
+            .unwrap_or(crate::tts::deepgram::DEFAULT_DEEPGRAM_TTS_MODEL)
+    }
     pub fn github_token(&self) -> Option<&str> {
         self.github_token.as_deref()
     }
@@ -198,6 +207,7 @@ impl Config {
             deepgram_api_key: env.get("DEEPGRAM_API_KEY").cloned(),
             elevenlabs_api_key: env.get("ELEVENLABS_API_KEY").cloned(),
             elevenlabs_voice_id: env.get("CONCH_ELEVEN_VOICE_ID").cloned(),
+            deepgram_tts_model: env.get("CONCH_DEEPGRAM_TTS_MODEL").cloned(),
             github_token: env.get("GITHUB_TOKEN").cloned(),
             provider,
             stt_backend,

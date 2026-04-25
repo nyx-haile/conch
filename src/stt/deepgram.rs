@@ -11,6 +11,9 @@ use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 pub struct DeepgramStt {
     api_key: String,
     base_url: String,
+    model: String,
+    endpointing_ms: u16,
+    mip_opt_out: bool,
 }
 
 impl DeepgramStt {
@@ -18,29 +21,58 @@ impl DeepgramStt {
         Self {
             api_key: api_key.into(),
             base_url: base_url.trim_end_matches('/').to_string(),
+            model: "nova-3".to_string(),
+            endpointing_ms: 350,
+            mip_opt_out: true,
         }
     }
 
     pub fn production(api_key: impl Into<String>) -> Self {
         Self::new(api_key, "wss://api.deepgram.com/v1/listen")
     }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn with_endpointing_ms(mut self, endpointing_ms: u16) -> Self {
+        self.endpointing_ms = endpointing_ms;
+        self
+    }
+
+    pub fn with_mip_opt_out(mut self, enabled: bool) -> Self {
+        self.mip_opt_out = enabled;
+        self
+    }
 }
 
 #[async_trait]
 impl SpeechToText for DeepgramStt {
     async fn open_stream(&self, config: &SttConfig) -> Result<Box<dyn SttStream>> {
+        let mut params = vec![
+            ("encoding", "linear16".to_string()),
+            ("sample_rate", config.sample_rate.max(16_000).to_string()),
+            ("model", self.model.clone()),
+            ("interim_results", "true".to_string()),
+            ("endpointing", self.endpointing_ms.to_string()),
+            ("punctuate", config.punctuate.to_string()),
+            ("mip_opt_out", self.mip_opt_out.to_string()),
+        ];
+        if let Some(language) = &config.language {
+            params.push(("language", language.clone()));
+        }
         let sep = if self.base_url.contains('?') {
             '&'
         } else {
             '?'
         };
-        let url = format!(
-            "{}{}encoding=linear16&sample_rate={}&model=nova-2&interim_results=true&punctuate={}",
-            self.base_url,
-            sep,
-            config.sample_rate.max(16_000),
-            config.punctuate
-        );
+        let query = params
+            .into_iter()
+            .map(|(key, value)| format!("{key}={}", query_escape(&value)))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{}{}{}", self.base_url, sep, query);
         let mut req = url
             .as_str()
             .into_client_request()
@@ -77,6 +109,8 @@ impl std::fmt::Debug for DeepgramStream {
 struct DgResponse {
     channel: DgChannel,
     is_final: bool,
+    #[serde(default)]
+    speech_final: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -139,6 +173,7 @@ impl SttStream for DeepgramStream {
                     let parsed: Result<DgResponse, _> = serde_json::from_str(&text);
                     match parsed {
                         Ok(r) => {
+                            let speech_final = r.speech_final;
                             let Some(alt) = r.channel.alternatives.into_iter().next() else {
                                 continue;
                             };
@@ -155,6 +190,9 @@ impl SttStream for DeepgramStream {
                                         end_ms: (w.end * 1000.0) as u64,
                                     })
                                     .collect();
+                                if speech_final {
+                                    tracing::debug!(target: "conch::stt::deepgram", "deepgram speech_final received");
+                                }
                                 return Some(TranscriptEvent::Final {
                                     text: alt.transcript,
                                     words,
@@ -198,4 +236,17 @@ fn is_close_race(err: &tokio_tungstenite::tungstenite::Error) -> bool {
             tokio_tungstenite::tungstenite::error::ProtocolError::SendAfterClosing
         )
     )
+}
+
+fn query_escape(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(byte as char)
+            }
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
 }

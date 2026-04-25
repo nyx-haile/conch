@@ -56,6 +56,15 @@ pub async fn run(
     };
 
     let tts: Arc<dyn TextToSpeech> = match config.tts_backend() {
+        TtsBackend::Deepgram => {
+            let key = config
+                .deepgram_api_key()
+                .context("DEEPGRAM_API_KEY required for deepgram TTS backend")?;
+            Arc::new(crate::tts::deepgram::DeepgramTts::production_with_model(
+                key,
+                config.deepgram_tts_model(),
+            ))
+        }
         TtsBackend::ElevenLabs => {
             let key = config
                 .elevenlabs_api_key()

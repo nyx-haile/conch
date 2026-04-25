@@ -7,6 +7,7 @@ pub mod llm;
 pub mod model;
 pub mod prep;
 pub mod provider;
+pub mod realtime;
 pub mod session;
 pub mod stt;
 pub mod tts;
