@@ -26,14 +26,17 @@ const appStatusCopy = {
 
 const productHighlights = [
   {
+    no: "01",
     title: "Open the app first",
     text: "Start at /app, confirm email for the free trial, accept recording consent, and begin a real voice session when Deepgram is configured.",
   },
   {
+    no: "02",
     title: "Deepgram underneath",
     text: "Browser audio uses a short-lived token from Conch. Server credentials stay off the client bundle.",
   },
   {
+    no: "03",
     title: "No billing theater",
     text: "Conch supports BYOK where possible and usage-based managed voice/model billing. No subscription. No automatic charge.",
   },
@@ -41,14 +44,17 @@ const productHighlights = [
 
 const usageOptions = [
   {
+    no: "01",
     title: "Free trial",
     text: "Confirm email to activate a $10 managed-usage trial. Free trials pause after $10,000 in aggregate managed usage.",
   },
   {
+    no: "02",
     title: "BYOK",
     text: "Bring provider/model keys where Conch supports it. Keys remain server-side or in your controlled runtime.",
   },
   {
+    no: "03",
     title: "Usage-based",
     text: "Conch-managed Deepgram and model usage can be metered by actual session activity instead of fixed public tiers.",
   },
@@ -123,6 +129,63 @@ const legalPages = {
   },
 };
 
+function ConchMark() {
+  return (
+    <svg viewBox="-40 -40 80 80" aria-hidden="true">
+      <g fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round">
+        <path d="M 28,0 A 28,28 0 0 0 -28,0 A 17,17 0 0 1 6,0 A 11,11 0 0 0 -16,0 A 6,6 0 0 1 -4,0" />
+      </g>
+      <circle cx="-4" cy="0" r="2.4" fill="currentColor" />
+    </svg>
+  );
+}
+
+function ConchSpiral() {
+  const ribs = Array.from({ length: 36 }, (_, i) => {
+    const angle = (i * 10 * Math.PI) / 180;
+    const r1 = 175;
+    const r2 = i % 3 === 0 ? 156 : 168;
+    return {
+      key: i,
+      x1: Math.cos(angle) * r1,
+      y1: Math.sin(angle) * r1,
+      x2: Math.cos(angle) * r2,
+      y2: Math.sin(angle) * r2,
+    };
+  });
+
+  return (
+    <div className="conch-spiral-frame">
+      <svg className="conch-spiral" viewBox="-200 -200 400 400" aria-hidden="true">
+        <defs>
+          <radialGradient id="conchHalo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f5d8c8" stopOpacity="0.85" />
+            <stop offset="60%" stopColor="#f1ebe0" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#f1ebe0" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+        <circle r="190" fill="url(#conchHalo)" />
+        <g stroke="#d23656" strokeWidth="0.6" strokeLinecap="round" opacity="0.42">
+          {ribs.map((line) => (
+            <line
+              key={line.key}
+              x1={line.x1}
+              y1={line.y1}
+              x2={line.x2}
+              y2={line.y2}
+            />
+          ))}
+        </g>
+        <circle r="156" fill="none" stroke="#d23656" strokeWidth="0.5" opacity="0.32" />
+        <g fill="none" stroke="#d23656" strokeWidth="1.6" strokeLinecap="round">
+          <path d="M 140,0 A 140,140 0 0 0 -140,0 A 100,100 0 0 1 60,0 A 55,55 0 0 0 -50,0 A 39,39 0 0 1 28,0 A 25,25 0 0 0 -22,0 A 16,16 0 0 1 10,0 A 8,8 0 0 0 -6,0" />
+        </g>
+        <circle cx="-6" cy="0" r="3.2" fill="#d23656" />
+      </svg>
+    </div>
+  );
+}
+
 function App() {
   const path = normalizePath(window.location.pathname);
   const page = legalPages[path];
@@ -159,8 +222,8 @@ function Shell({ active = "home", children }) {
     <div className="app-shell">
       <header className="site-header">
         <a href="/" className="brand" aria-label="Conch home">
-          <span className="brand-mark">◒</span>
-          <span>Conch</span>
+          <span className="brand-mark"><ConchMark /></span>
+          <span>✣ Conch</span>
         </a>
         <nav aria-label="Primary navigation">
           <a className={active === "app" ? "active" : ""} href="/app">Open app</a>
@@ -172,10 +235,10 @@ function Shell({ active = "home", children }) {
       </header>
       {children}
       <footer className="site-footer">
-        <span>© 2026 Conch</span>
+        <span>© 2026 Conch — voice discovery, briefly.</span>
         <a href="/terms.html">Terms</a>
         <a href="/privacy.html">Privacy</a>
-        <a href="/recording-consent.html">Recording Consent</a>
+        <a href="/recording-consent.html">Consent</a>
         <a href="/status.html">Status</a>
         <a href={billingHref}>Billing</a>
         <a href={supportHref}>Support</a>
@@ -189,8 +252,8 @@ function HomePage() {
     <main>
       <section className="hero-section section-frame">
         <div className="hero-copy">
-          <p className="eyebrow">Voice discovery for builders</p>
-          <h1>Open Conch and start talking.</h1>
+          <p className="eyebrow">Voice discovery, for builders</p>
+          <h1>Open Conch and <em>start talking.</em></h1>
           <p className="hero-lede">
             Conch turns a live voice conversation into a product brief. Confirm email for a free trial,
             accept recording consent, and use Deepgram-backed voice when this deployment is configured.
@@ -205,14 +268,17 @@ function HomePage() {
         </div>
 
         <aside className="app-preview" aria-label="Conch app access path">
+          <div className="preview-illustration">
+            <ConchSpiral />
+          </div>
           <div className="preview-topline">
             <span>App path</span>
             <span>Deepgram-ready</span>
           </div>
           <ol className="path-list">
-            <li><strong>1</strong><span>Sign up for the free trial.</span></li>
-            <li><strong>2</strong><span>Accept recording consent.</span></li>
-            <li><strong>3</strong><span>Start a real voice session — no fake transcript.</span></li>
+            <li><strong>i</strong><span>Sign up for the free trial.</span></li>
+            <li><strong>ii</strong><span>Accept recording consent.</span></li>
+            <li><strong>iii</strong><span>Start a real voice session — no fake transcript.</span></li>
           </ol>
           <a className="button button-primary full-width" href="/app">Go to app</a>
         </aside>
@@ -221,16 +287,17 @@ function HomePage() {
       <section className="bento-grid" aria-label="Conch product highlights">
         {productHighlights.map((feature) => (
           <article className="bento-card" key={feature.title}>
+            <span className="specimen-no">№ {feature.no}</span>
             <h2>{feature.title}</h2>
             <p>{feature.text}</p>
           </article>
         ))}
       </section>
 
-      <section className="section-frame usage-section" id="usage">
+      <section className="usage-section" id="usage">
         <div>
           <p className="eyebrow">BYOK / Usage-based</p>
-          <h2>No public price theater.</h2>
+          <h2>No public price <em>theater</em>.</h2>
           <p>
             The first product job is access: open the app, confirm a free trial, and talk. Each confirmed trial gets $10 of managed usage; free trials pause at $10,000 aggregate managed usage.
           </p>
@@ -238,7 +305,10 @@ function HomePage() {
         <div className="usage-grid">
           {usageOptions.map((option) => (
             <article className="usage-card" key={option.title}>
-              <h3>{option.title}</h3>
+              <h3>
+                <span>{option.title}</span>
+                <span className="specimen-no">№ {option.no}</span>
+              </h3>
               <p>{option.text}</p>
             </article>
           ))}
@@ -248,7 +318,7 @@ function HomePage() {
       <section className="cta-strip">
         <div>
           <p className="eyebrow">Ready now</p>
-          <h2>The app is the front door.</h2>
+          <h2>The app is the <em>front door</em>.</h2>
         </div>
         <div className="hero-actions">
           <a className="button button-primary" href="/app/signup">Start free</a>
@@ -290,12 +360,12 @@ function SignupPage() {
   }
 
   return (
-    <main className="app-page section-frame">
+    <main className="app-page">
       <section className="signup-panel">
         <p className="eyebrow">Free trial</p>
-        <h1>Sign up, then start talking.</h1>
+        <h1>Sign up, then <em>start talking</em>.</h1>
         <p>
-          Supabase Auth sends a confirmation link first. After email confirmation, Conch opens `/app` with a server-issued trial session.
+          Supabase Auth sends a confirmation link first. After email confirmation, Conch opens <code>/app</code> with a server-issued trial session.
         </p>
         <form className="signup-form" onSubmit={handleSubmit}>
           <label htmlFor="trial-email">Work email</label>
@@ -377,7 +447,7 @@ function ConfirmPage() {
 
   return (
     <main className="app-page">
-      <section className="signup-panel section-frame">
+      <section className="signup-panel">
         <p className="eyebrow">Email confirmation</p>
         <h1>{appStatusCopy[status] || "Confirming"}</h1>
         <p>{message}</p>
@@ -534,7 +604,7 @@ function AppWorkspace() {
           ...current,
           {
             id: `${Date.now()}-${current.length}`,
-            speaker: "● You",
+            speaker: "You",
             text: transcript,
           },
         ]);
@@ -596,10 +666,10 @@ function AppWorkspace() {
 
   return (
     <main className="workspace-layout">
-      <section className="workspace-main section-frame" aria-label="Conch voice workspace">
+      <section className="workspace-main" aria-label="Conch voice workspace">
         <div className="workspace-heading">
-          <p className="eyebrow">/app</p>
-          <h1>Talk to Conch.</h1>
+          <p className="eyebrow">/app — voice studio</p>
+          <h1>Talk to <em>Conch</em>.</h1>
           <p>
             This is the real app entry. It does not show sample transcripts or fake briefs: it waits for signup, recording consent, and Deepgram configuration.
           </p>
@@ -651,26 +721,29 @@ function AppWorkspace() {
 
             <section className="session-grid" aria-label="Conch session regions">
               <article className="session-card transcript-card">
-                <div className="card-label">Transcript</div>
+                <div className="card-label"><span>Transcript</span><span>Live</span></div>
+                <p className="speaker-legend"><span>● You</span><span>✣ Conch</span></p>
                 {turns.length === 0 && !interimText ? (
                   <p>No transcript yet. Start voice after consent to capture real audio.</p>
                 ) : (
                   <div className="turn-list">
                     {turns.map((turn) => (
-                      <p key={turn.id}><strong>{turn.speaker}</strong> {turn.text}</p>
+                      <p key={turn.id}><strong>{turn.speaker}</strong>{turn.text}</p>
                     ))}
-                    {interimText && <p className="interim"><strong>● You</strong> {interimText}</p>}
+                    {interimText && <p className="interim"><strong>You · interim</strong>{interimText}</p>}
                   </div>
                 )}
               </article>
               <article className="session-card">
-                <div className="card-label">Brief</div>
+                <div className="card-label"><span>Brief</span><span>Pending</span></div>
                 <p>Generated brief output will appear only after durable Conch session wiring is complete.</p>
               </article>
               <article className="session-card">
-                <div className="card-label">Status</div>
-                <p>✣ Conch: {statusText}</p>
-                <p>Controls: Hold Space talk, Tap Space toggle mic, Esc interrupt.</p>
+                <div className="card-label"><span>Status</span><span>Studio</span></div>
+                <p>{statusText}</p>
+                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", color: "var(--ink-soft)", letterSpacing: "0.04em" }}>
+                  Hold Space — talk · Tap Space — toggle mic · Esc — interrupt
+                </p>
                 <span className="sr-only">Voice modes: Listening, Thinking, Speaking, Closing.</span>
                 <p className="waveform" aria-label="Waveform placeholder">▁ ▂ ▃ ▄ ▅ ▆ ▇ █</p>
               </article>
@@ -685,7 +758,7 @@ function AppWorkspace() {
 
 function LegalPage({ page }) {
   return (
-    <main className="legal-layout section-frame">
+    <main className="legal-layout">
       <p className="eyebrow">{page.eyebrow}</p>
       <h1>{page.title}</h1>
       <div className="legal-sections">
@@ -703,11 +776,11 @@ function LegalPage({ page }) {
 
 function StatusPage() {
   return (
-    <main className="legal-layout section-frame">
+    <main className="legal-layout">
       <p className="eyebrow">Public app status</p>
-      <h1>Conch is online.</h1>
+      <h1>Conch is <em>online</em>.</h1>
       <p>
-        The app-first web surface is serving `/`, `/app`, `/app/signup`, legal, consent, and status routes. Voice availability depends on the server-side Deepgram token broker configuration.
+        The app-first web surface is serving <code>/</code>, <code>/app</code>, <code>/app/signup</code>, legal, consent, and status routes. Voice availability depends on the server-side Deepgram token broker configuration.
       </p>
       <div className="hero-actions">
         <a className="button button-primary" href="/app">Open Conch</a>
@@ -719,9 +792,9 @@ function StatusPage() {
 
 function NotFound() {
   return (
-    <main className="legal-layout section-frame">
+    <main className="legal-layout">
       <p className="eyebrow">404</p>
-      <h1>That page drifted out to sea.</h1>
+      <h1>That page <em>drifted out to sea</em>.</h1>
       <p>Head back to Conch or contact {contactEmail} if you expected something here.</p>
       <a className="button button-primary" href="/app">Open Conch</a>
     </main>

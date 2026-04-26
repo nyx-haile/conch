@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Conch">
-  <rect width="64" height="64" rx="14" fill="#0f1020"/>
-  <path d="M14 35c0-11 8-20 20-20 9 0 16 6 16 14 0 7-5 12-12 12h-6l10 8H28c-8 0-14-6-14-14Z" fill="#ff4fd8"/>
-  <circle cx="36" cy="29" r="4" fill="#0f1020"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-40 -40 80 80" role="img" aria-label="Conch">
+  <rect x="-40" y="-40" width="80" height="80" rx="14" fill="#f1ebe0"/>
+  <g fill="none" stroke="#d23656" stroke-width="3" stroke-linecap="round">
+    <path d="M 28,0 A 28,28 0 0 0 -28,0 A 17,17 0 0 1 6,0 A 11,11 0 0 0 -16,0 A 6,6 0 0 1 -4,0"/>
+  </g>
+  <circle cx="-4" cy="0" r="2.6" fill="#d23656"/>
 </svg>
