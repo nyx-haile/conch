@@ -30,6 +30,10 @@
     {
       "source": "/status.html",
       "destination": "/"
+    },
+    {
+      "source": "/cli",
+      "destination": "/"
     }
   ],
   "headers": [
@@ -123,6 +127,15 @@
     },
     {
       "source": "/status.html",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/cli",
       "headers": [
         {
           "key": "Permissions-Policy",

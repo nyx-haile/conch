@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 const contactEmail = "conch@theos.sh";
 const billingHref = `mailto:${contactEmail}?subject=Conch%20billing`;
 const supportHref = `mailto:${contactEmail}?subject=Conch%20support`;
+const cliNotifyHref = `mailto:${contactEmail}?subject=Notify%20me%20when%20Conch%20CLI%20is%20back`;
 const trialStorageKey = "conch_trial_session_v1";
 const consentVersion = "2026-04-26";
 
@@ -198,6 +199,10 @@ function App() {
     return <Shell><StatusPage /></Shell>;
   }
 
+  if (path === "/cli") {
+    return <Shell active="cli"><CliComingSoon /></Shell>;
+  }
+
   if (path === "/app/signup") {
     return <Shell active="signup"><SignupPage /></Shell>;
   }
@@ -228,6 +233,7 @@ function Shell({ active = "home", children }) {
         <nav aria-label="Primary navigation">
           <a className={active === "app" ? "active" : ""} href="/app">Open app</a>
           <a className={active === "signup" ? "active" : ""} href="/app/signup">Start free</a>
+          <a className={active === "cli" ? "active" : ""} href="/cli">Terminal</a>
           <a href="/#usage">Usage</a>
           <a href="/recording-consent.html">Consent</a>
           <a href="/privacy.html">Privacy</a>
@@ -236,6 +242,7 @@ function Shell({ active = "home", children }) {
       {children}
       <footer className="site-footer">
         <span>© 2026 Conch — voice discovery, briefly.</span>
+        <a href="/cli">Terminal</a>
         <a href="/terms.html">Terms</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/recording-consent.html">Consent</a>
@@ -752,6 +759,80 @@ function AppWorkspace() {
         )}
       </section>
 
+    </main>
+  );
+}
+
+function CliComingSoon() {
+  return (
+    <main className="cli-page">
+      <section className="cli-hero section-frame">
+        <div className="cli-copy">
+          <p className="eyebrow">Terminal · Coming back soon</p>
+          <h1>Conch in your <em>terminal</em>.</h1>
+          <p className="cli-lede">
+            The original Conch was a single command. Type a topic, talk it through, walk away with a written brief. We're polishing it for re-release — leave your email and we'll ping you when it lands.
+          </p>
+          <div className="hero-actions">
+            <a className="button button-primary" href={cliNotifyHref}>Notify me</a>
+            <a className="button button-secondary" href="/app">Open the web app</a>
+          </div>
+        </div>
+
+        <aside className="terminal-frame" aria-label="Conch terminal preview">
+          <div className="terminal-bar">
+            <span className="terminal-dot" data-tone="rest" />
+            <span className="terminal-dot" data-tone="warn" />
+            <span className="terminal-dot" data-tone="go" />
+            <span className="terminal-title">conch</span>
+          </div>
+          <pre className="terminal-screen">
+            <span className="terminal-line">
+              <span className="terminal-prompt">~ ❯</span> conch talk <span className="terminal-arg">"voice discovery, briefly"</span>
+            </span>
+            <span className="terminal-line terminal-meta">
+              <span className="terminal-mark">✣</span> Conch · listening
+            </span>
+            <span className="terminal-line terminal-wave">▁ ▂ ▃ ▄ ▅ ▆ ▇ █ ▇ ▆ ▅ ▄ ▃ ▂</span>
+            <span className="terminal-line terminal-dialogue">
+              &gt; <span className="terminal-italic">Who's the brief for, and what should they walk away knowing?</span>
+            </span>
+            <span className="terminal-line terminal-cursor">
+              <span className="terminal-prompt">~ ❯</span> <span className="terminal-blink">▌</span>
+            </span>
+          </pre>
+        </aside>
+      </section>
+
+      <section className="cli-features">
+        <article className="cli-feature">
+          <span className="specimen-no">№ 01</span>
+          <h2>One command, one brief.</h2>
+          <p>Type a topic. Conch runs the spoken Q&amp;A and writes the brief when you're done.</p>
+        </article>
+        <article className="cli-feature">
+          <span className="specimen-no">№ 02</span>
+          <h2>Three depths.</h2>
+          <p>Sketch for fast, talk for default, chronicle for deep. Pick the one that fits the problem.</p>
+        </article>
+        <article className="cli-feature">
+          <span className="specimen-no">№ 03</span>
+          <h2>Local-first.</h2>
+          <p>Local mic, live transcript on screen, written brief saved to your machine on exit.</p>
+        </article>
+      </section>
+
+      <section className="cli-callout">
+        <div>
+          <p className="eyebrow">In the meantime</p>
+          <h2>The web app is <em>open</em>.</h2>
+          <p>Same voice discovery, same launch-ready brief. No install required.</p>
+        </div>
+        <div className="hero-actions">
+          <a className="button button-primary" href="/app/signup">Start free</a>
+          <a className="button button-secondary" href="/app">Open Conch</a>
+        </div>
+      </section>
     </main>
   );
 }
