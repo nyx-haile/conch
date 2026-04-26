@@ -1,8 +1,8 @@
-//! Auth/onboarding surface for the Conch web launch.
-//!
-//! The beta account model is deliberately small: one owner user, one
-//! workspace, required legal acceptance, then Stripe setup-mode card
-//! verification before trial credits are provisioned.
+// Auth/onboarding surface for the Conch web launch.
+//
+// The beta account model is deliberately small: one owner user, one
+// workspace, required legal acceptance, then Stripe setup-mode card
+// verification before trial credits are provisioned.
 
 use super::billing::{trial_setup_checkout, StripeCheckoutSpec, BILLING_DISCLOSURE};
 use chrono::{DateTime, Utc};

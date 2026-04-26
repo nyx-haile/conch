@@ -1,10 +1,10 @@
-//! Billing primitives for the Conch web launch.
-//!
-//! The launch billing contract is intentionally narrow: a card-gated free
-//! trial through Stripe Checkout setup mode and explicit one-time prepaid
-//! packs. This module is framework-agnostic so route handlers can map these
-//! specs onto Stripe API calls without ever touching raw card data or creating
-//! subscriptions.
+// Billing primitives for the Conch web launch.
+//
+// The launch billing contract is intentionally narrow: a card-gated free
+// trial through Stripe Checkout setup mode and explicit one-time prepaid
+// packs. This module is framework-agnostic so route handlers can map these
+// specs onto Stripe API calls without ever touching raw card data or creating
+// subscriptions.
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};

@@ -1,8 +1,8 @@
-//! Static legal and trust-copy surfaces for the Conch web launch.
-//!
-//! These are product/legal placeholders for implementation and tests. They
-//! must be reviewed by counsel and populated with the final company identity
-//! before accepting public payments.
+// Static legal and trust-copy surfaces for the Conch web launch.
+//
+// These are product/legal placeholders for implementation and tests. They
+// must be reviewed by counsel and populated with the final company identity
+// before accepting public payments.
 
 use super::billing::{BILLING_DISCLOSURE, STRIPE_CARD_STORAGE_DISCLOSURE};
 use serde::{Deserialize, Serialize};
