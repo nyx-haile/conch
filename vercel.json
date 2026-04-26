@@ -3,12 +3,34 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
-    { "source": "/app", "destination": "/" },
-    { "source": "/app/signup", "destination": "/" },
-    { "source": "/terms.html", "destination": "/" },
-    { "source": "/privacy.html", "destination": "/" },
-    { "source": "/recording-consent.html", "destination": "/" },
-    { "source": "/status.html", "destination": "/" }
+    {
+      "source": "/app",
+      "destination": "/"
+    },
+    {
+      "source": "/app/signup",
+      "destination": "/"
+    },
+    {
+      "source": "/app/confirm",
+      "destination": "/"
+    },
+    {
+      "source": "/terms.html",
+      "destination": "/"
+    },
+    {
+      "source": "/privacy.html",
+      "destination": "/"
+    },
+    {
+      "source": "/recording-consent.html",
+      "destination": "/"
+    },
+    {
+      "source": "/status.html",
+      "destination": "/"
+    }
   ],
   "headers": [
     {
@@ -47,6 +69,15 @@
     },
     {
       "source": "/",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/app/confirm",
       "headers": [
         {
           "key": "Permissions-Policy",

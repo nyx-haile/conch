@@ -97,7 +97,9 @@ fn javascript_app_has_app_first_build_contract() {
         "vite.config.js",
         "src/styles.css",
         "api/_session.js",
+        "api/_usage.js",
         "api/trial-signup.js",
+        "api/trial-confirm.js",
         "api/deepgram-token.js",
         "public/favicon.svg",
         "public/robots.txt",
@@ -138,6 +140,9 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
             "BackgroundBeams",
             "Launch brief / Checkout beta",
             "Finite app states",
+            "Session checklist",
+            "What happens next",
+            "step-list",
             "<strong>{state}</strong>",
             "Session: {trialSession",
             "Request beta access",
@@ -166,9 +171,10 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         "usage-based",
         "Deepgram",
         "voice_config_missing",
+        "email_confirmation_required",
+        "$10 of managed usage",
+        "$10,000",
         "No subscription. No automatic charge.",
-        "Session checklist",
-        "What happens next",
         "Ready to talk",
         "/terms.html",
         "/privacy.html",
@@ -185,6 +191,8 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         "signup_required",
         "trial_pending",
         "voice_config_missing",
+        "email_confirmation_required",
+        "usage_config_missing",
         "consent_required",
         "ready_to_talk",
         "listening",
@@ -211,6 +219,7 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
     let broker = read("api/deepgram-token.js");
     let signup = read("api/trial-signup.js");
     let session = read("api/_session.js");
+    let usage = read("api/_usage.js");
     let http = read("api/_http.js");
 
     for required in [
@@ -221,10 +230,12 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
         "ttl_seconds",
         "setJsonNoStoreHeaders",
         "voice_config_missing",
+        "email_confirmation_required",
         "consent_required",
         "signup_required",
         "Authorization",
         "X-Conch-Session",
+        "max_session_seconds",
     ] {
         assert!(
             broker.contains(required),
@@ -237,9 +248,25 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
         "token broker must not trust self-attested trial headers or raw trial id shape"
     );
     assert!(
-        signup.contains("createTrialSession"),
-        "signup API must issue server-signed trial sessions"
+        signup.contains("createEmailConfirmation"),
+        "signup API must require email confirmation before trial sessions"
     );
+
+    for required in [
+        "usage_config_missing",
+        "usage_limit_reached",
+        "free_trials_closed",
+        "perUserTrialBudgetCents",
+        "globalFreeTrialBudgetCents",
+        "1000",
+        "1000000",
+    ] {
+        assert!(
+            usage.contains(required),
+            "usage helper missing `{required}`"
+        );
+    }
+
     for required in [
         "createHmac",
         "timingSafeEqual",

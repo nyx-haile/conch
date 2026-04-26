@@ -1,5 +1,6 @@
 import { readJsonBody, setJsonNoStoreHeaders } from "./_http.js";
 import { extractBearerToken, verifyTrialSessionToken } from "./_session.js";
+import { reserveTrialTokenGrant } from "./_usage.js";
 
 const deepgramGrantUrl = "https://api.deepgram.com/v1/auth/grant";
 const tokenTtlSeconds = 60;
@@ -25,7 +26,15 @@ export default async function handler(request, response) {
   if (!session || (requestedSessionId && requestedSessionId !== session.sessionId)) {
     response.status(401).json({
       state: "signup_required",
-      message: "Server-issued free-trial session required.",
+      message: "Confirmed email and server-issued free-trial session required.",
+    });
+    return;
+  }
+
+  if (!session.emailConfirmed) {
+    response.status(401).json({
+      state: "email_confirmation_required",
+      message: "Confirm your email before starting a free-trial voice session.",
     });
     return;
   }
@@ -72,6 +81,18 @@ export default async function handler(request, response) {
       return;
     }
 
+    const usageReservation = await reserveTrialTokenGrant(session.email);
+    if (!usageReservation.ok) {
+      response.status(usageReservation.status).json({
+        state: usageReservation.state,
+        provider: "deepgram",
+        message: usageReservation.message,
+        perUserBudgetCents: usageReservation.perUserBudgetCents,
+        globalFreeTrialBudgetCents: usageReservation.globalFreeTrialBudgetCents,
+      });
+      return;
+    }
+
     response.status(200).json({
       state: "ready_to_talk",
       provider: "deepgram",
@@ -80,6 +101,9 @@ export default async function handler(request, response) {
       expires_in: payload.expires_in ?? tokenTtlSeconds,
       websocket_url: "wss://api.deepgram.com/v1/listen",
       model: "nova-3",
+      max_session_seconds: 600,
+      perUserBudgetCents: usageReservation.perUserBudgetCents,
+      globalFreeTrialBudgetCents: usageReservation.globalFreeTrialBudgetCents,
     });
   } catch {
     response.status(502).json({

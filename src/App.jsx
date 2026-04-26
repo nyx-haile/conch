@@ -9,6 +9,11 @@ const consentVersion = "2026-04-26";
 const appStatusCopy = {
   signup_required: "Free trial required",
   trial_pending: "Opening your trial",
+  email_confirmation_required: "Check your email",
+  email_config_missing: "Email setup needed",
+  usage_config_missing: "Usage metering needed",
+  usage_limit_reached: "Trial limit reached",
+  free_trials_closed: "Free trials paused",
   voice_config_missing: "Voice setup needed",
   consent_required: "Consent required",
   ready_to_talk: "Ready to talk",
@@ -22,7 +27,7 @@ const appStatusCopy = {
 const productHighlights = [
   {
     title: "Open the app first",
-    text: "Start at /app, sign up for the free trial, accept recording consent, and begin a real voice session when Deepgram is configured.",
+    text: "Start at /app, confirm email for the free trial, accept recording consent, and begin a real voice session when Deepgram is configured.",
   },
   {
     title: "Deepgram underneath",
@@ -37,7 +42,7 @@ const productHighlights = [
 const usageOptions = [
   {
     title: "Free trial",
-    text: "Create a trial session and land directly in the app. If voice is configured, the next step is consent and talking.",
+    text: "Confirm email to activate a $10 managed-usage trial. Free trials pause after $10,000 in aggregate managed usage.",
   },
   {
     title: "BYOK",
@@ -56,11 +61,11 @@ const legalPages = {
     sections: [
       [
         "Beta status",
-        "Conch is an early beta voice-discovery app. The web app can start a trial session, while durable billing, exports, and long-term storage remain backend milestones.",
+        "Conch is an early beta voice-discovery app. The web app requires email confirmation before a trial session; durable exports and long-term storage remain backend milestones.",
       ],
       [
         "Payments",
-        "Pricing is BYOK and/or usage-based for Conch-managed voice and model usage. No subscription. No automatic charge. Conch charges only after a separate explicit purchase or managed-usage agreement.",
+        "Pricing is BYOK and/or usage-based for Conch-managed voice and model usage. Confirmed free trials include $10 of managed usage per user and pause when aggregate free-trial usage reaches $10,000. No subscription. No automatic charge. Conch charges only after a separate explicit purchase or managed-usage agreement.",
       ],
       [
         "Recording responsibilities",
@@ -78,7 +83,7 @@ const legalPages = {
     sections: [
       [
         "What Conch needs",
-        "Conch collects the minimum account, session, consent, audio, transcript, generated brief, provider-routing metadata, and logs needed to run the service.",
+        "Conch collects the minimum account, email-confirmation, session, consent, usage-metering, audio, transcript, generated brief, provider-routing metadata, and logs needed to run the service.",
       ],
       [
         "Processors",
@@ -134,6 +139,10 @@ function App() {
     return <Shell active="signup"><SignupPage /></Shell>;
   }
 
+  if (path === "/app/confirm") {
+    return <Shell active="signup"><ConfirmPage /></Shell>;
+  }
+
   if (path === "/app") {
     return <Shell active="app"><AppWorkspace /></Shell>;
   }
@@ -183,7 +192,7 @@ function HomePage() {
           <p className="eyebrow">Voice discovery for builders</p>
           <h1>Open Conch and start talking.</h1>
           <p className="hero-lede">
-            Conch turns a live voice conversation into a product brief. Start a free trial,
+            Conch turns a live voice conversation into a product brief. Confirm email for a free trial,
             accept recording consent, and use Deepgram-backed voice when this deployment is configured.
           </p>
           <div className="hero-actions">
@@ -223,7 +232,7 @@ function HomePage() {
           <p className="eyebrow">BYOK / Usage-based</p>
           <h2>No public price theater.</h2>
           <p>
-            The first product job is access: open the app, start a free trial, and talk. Billing can be BYOK or metered by actual managed usage.
+            The first product job is access: open the app, confirm a free trial, and talk. Each confirmed trial gets $10 of managed usage; free trials pause at $10,000 aggregate managed usage.
           </p>
         </div>
         <div className="usage-grid">
@@ -253,11 +262,15 @@ function HomePage() {
 function SignupPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
+  const [message, setMessage] = useState("");
+  const [confirmationUrl, setConfirmationUrl] = useState("");
   const [error, setError] = useState("");
 
   async function handleSubmit(event) {
     event.preventDefault();
     setStatus("trial_pending");
+    setMessage("");
+    setConfirmationUrl("");
     setError("");
 
     try {
@@ -267,18 +280,12 @@ function SignupPage() {
         body: JSON.stringify({ email: email.trim() }),
       });
       const payload = await safeJson(response);
-      if (!response.ok || !payload.sessionToken) {
+      if (!response.ok || payload.state !== "email_confirmation_required") {
         throw new Error(payload.message || "Could not start the free trial.");
       }
-      saveTrialSession({
-        id: payload.sessionId,
-        email: payload.email,
-        createdAt: new Date().toISOString(),
-        expiresAt: payload.expiresAt,
-        trial: payload.trial,
-        sessionToken: payload.sessionToken,
-      });
-      window.location.assign("/app");
+      setStatus("email_confirmation_required");
+      setMessage(payload.message || "Check your email to confirm this free trial.");
+      setConfirmationUrl(payload.devConfirmationUrl || "");
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Could not start the free trial.");
@@ -306,18 +313,75 @@ function SignupPage() {
             required
           />
           <button className="button button-primary" type="submit" disabled={status === "trial_pending"}>
-            {status === "trial_pending" ? "Opening app…" : "Start free"}
+            {status === "trial_pending" ? "Sending confirmation…" : "Start free"}
           </button>
+          {message && <p className="success-text">{message}</p>}
+          {confirmationUrl && <a className="button button-secondary" href={confirmationUrl}>Open dev confirmation link</a>}
           {error && <p className="error-text">{error}</p>}
         </form>
         <p className="fine-print">
-          No card collection in this app shell. BYOK or usage-based billing is handled separately through {contactEmail}.
+          No card collection in this app shell. Confirmed free trials include $10 of managed usage per user and pause at $10,000 aggregate free-trial usage.
         </p>
       </section>
-      <aside className="state-card">
-        <h2>What happens next</h2>
-        <SignupSteps pending={status === "trial_pending"} />
-      </aside>
+    </main>
+  );
+}
+
+
+function ConfirmPage() {
+  const [status, setStatus] = useState("trial_pending");
+  const [message, setMessage] = useState("Confirming your email…");
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get("token") || "";
+    if (!token) {
+      setStatus("email_confirmation_required");
+      setMessage("This confirmation link is missing a token. Start the free trial again.");
+      return;
+    }
+
+    async function confirmEmail() {
+      try {
+        const response = await fetch("/api/trial-confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        const payload = await safeJson(response);
+        if (!response.ok || !payload.sessionToken) {
+          throw new Error(payload.message || "Could not confirm this trial.");
+        }
+        saveTrialSession({
+          id: payload.sessionId,
+          email: payload.email,
+          emailConfirmed: payload.emailConfirmed,
+          createdAt: new Date().toISOString(),
+          expiresAt: payload.expiresAt,
+          trial: payload.trial,
+          trialBudgetCents: payload.trialBudgetCents,
+          globalFreeTrialBudgetCents: payload.globalFreeTrialBudgetCents,
+          sessionToken: payload.sessionToken,
+        });
+        setStatus("consent_required");
+        setMessage("Email confirmed. Opening Conch…");
+        window.setTimeout(() => window.location.assign("/app"), 500);
+      } catch (err) {
+        setStatus("error");
+        setMessage(err instanceof Error ? err.message : "Could not confirm this trial.");
+      }
+    }
+
+    confirmEmail();
+  }, []);
+
+  return (
+    <main className="app-page">
+      <section className="signup-panel section-frame">
+        <p className="eyebrow">Email confirmation</p>
+        <h1>{appStatusCopy[status] || "Confirming"}</h1>
+        <p>{message}</p>
+        {status === "error" && <a className="button button-primary" href="/app/signup">Start again</a>}
+      </section>
     </main>
   );
 }
@@ -333,6 +397,7 @@ function AppWorkspace() {
   const mediaStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const websocketRef = useRef(null);
+  const sessionTimerRef = useRef(null);
 
   useEffect(() => {
     const session = loadTrialSession();
@@ -391,9 +456,9 @@ function AppWorkspace() {
       });
       const tokenPayload = await safeJson(tokenResponse);
 
-      if (tokenResponse.status === 503 || tokenPayload.state === "voice_config_missing") {
-        setState("voice_config_missing");
-        setStatusText(tokenPayload.message || "Deepgram voice is not configured on this deployment yet.");
+      if (!tokenResponse.ok && tokenPayload.state && appStatusCopy[tokenPayload.state]) {
+        setState(tokenPayload.state);
+        setStatusText(tokenPayload.message || "Voice is not available yet.");
         return;
       }
 
@@ -424,6 +489,10 @@ function AppWorkspace() {
           }
         };
         recorder.start(250);
+        const maxSessionMs = Math.max(30, Number(tokenPayload.max_session_seconds || 600)) * 1000;
+        sessionTimerRef.current = window.setTimeout(() => {
+          stopVoiceRun("ended", "Free-trial voice window ended. Start another run if you still have trial budget.");
+        }, maxSessionMs);
         setState("listening");
         setStatusText("Listening with Deepgram. Speak naturally; stop when done.");
       };
@@ -491,6 +560,11 @@ function AppWorkspace() {
       recorder.stop();
     }
     mediaRecorderRef.current = null;
+
+    if (sessionTimerRef.current) {
+      window.clearTimeout(sessionTimerRef.current);
+      sessionTimerRef.current = null;
+    }
 
     const websocket = websocketRef.current;
     if (websocket && websocket.readyState === WebSocket.OPEN) {
@@ -595,7 +669,8 @@ function AppWorkspace() {
               <article className="session-card">
                 <div className="card-label">Status</div>
                 <p>✣ Conch: {statusText}</p>
-                <p>Controls: Hold Space talk, Tap Space toggle mic, Esc interrupt. States: Listening, Thinking, Speaking, Closing.</p>
+                <p>Controls: Hold Space talk, Tap Space toggle mic, Esc interrupt.</p>
+                <span className="sr-only">Voice modes: Listening, Thinking, Speaking, Closing.</span>
                 <p className="waveform" aria-label="Waveform placeholder">▁ ▂ ▃ ▄ ▅ ▆ ▇ █</p>
               </article>
             </section>
@@ -603,60 +678,7 @@ function AppWorkspace() {
         )}
       </section>
 
-      <aside className="state-card section-frame">
-        <h2>Session checklist</h2>
-        <SessionChecklist
-          hasTrial={Boolean(trialSession)}
-          hasConsent={recordingConsentAccepted}
-          state={state}
-        />
-        <p className="fine-print">
-          Trial: {trialSession ? "active" : "needed"}
-        </p>
-      </aside>
     </main>
-  );
-}
-
-function SignupSteps({ pending }) {
-  const steps = [
-    ["Create a free trial", pending ? "Opening…" : "Use your email to start"],
-    ["Open Conch", "Land directly in /app"],
-    ["Accept recording consent", "Required before microphone access"],
-    ["Start voice", "Available when voice is configured"],
-  ];
-
-  return <StepList steps={steps} currentIndex={pending ? 0 : -1} />;
-}
-
-function SessionChecklist({ hasTrial, hasConsent, state }) {
-  const voiceReady = ["ready_to_talk", "listening", "thinking", "speaking", "ended"].includes(state);
-  const voiceBlocked = state === "voice_config_missing" || state === "error";
-  const transcriptActive = ["listening", "thinking", "speaking", "ended"].includes(state);
-  const steps = [
-    ["Free trial", hasTrial ? "Active" : "Create one to enter the app"],
-    ["Recording consent", hasConsent ? "Accepted" : "Needed before microphone access"],
-    [
-      "Voice connection",
-      voiceBlocked ? "Needs provider configuration" : voiceReady ? "Ready" : "Waiting for trial and consent",
-    ],
-    ["Transcript", transcriptActive ? "Real audio only" : "Appears after voice starts"],
-  ];
-  const currentIndex = !hasTrial ? 0 : !hasConsent ? 1 : voiceBlocked || !voiceReady ? 2 : 3;
-
-  return <StepList steps={steps} currentIndex={currentIndex} />;
-}
-
-function StepList({ steps, currentIndex }) {
-  return (
-    <ol className="step-list">
-      {steps.map(([label, detail], index) => (
-        <li className={index === currentIndex ? "current" : ""} key={label}>
-          <strong>{label}</strong>
-          <span>{detail}</span>
-        </li>
-      ))}
-    </ol>
   );
 }
 

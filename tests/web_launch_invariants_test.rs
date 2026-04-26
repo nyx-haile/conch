@@ -283,9 +283,11 @@ fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
         "usage-based",
         "Deepgram",
         "voice_config_missing",
+        "email_confirmation_required",
+        "usage_config_missing",
+        "$10 of managed usage",
+        "$10,000",
         "No subscription. No automatic charge.",
-        "Session checklist",
-        "What happens next",
         "Ready to talk",
     ] {
         assert!(
@@ -298,6 +300,10 @@ fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
         "signup_required",
         "trial_pending",
         "voice_config_missing",
+        "email_confirmation_required",
+        "usage_config_missing",
+        "usage_limit_reached",
+        "free_trials_closed",
         "consent_required",
         "ready_to_talk",
         "listening",
@@ -317,6 +323,9 @@ fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
         "motion/react",
         "Launch brief / Checkout beta",
         "Finite app states",
+        "Session checklist",
+        "What happens next",
+        "step-list",
         "<strong>{state}</strong>",
         "Session: {trialSession",
         "Request beta access",
@@ -366,9 +375,12 @@ fn deepgram_token_endpoint_is_server_only_and_consent_gated() {
         "extractBearerToken",
         "ttl_seconds",
         "setJsonNoStoreHeaders",
+        "reserveTrialTokenGrant",
         "signup_required",
+        "email_confirmation_required",
         "consent_required",
         "voice_config_missing",
+        "max_session_seconds",
     ] {
         assert!(
             broker.contains(required),
@@ -380,8 +392,17 @@ fn deepgram_token_endpoint_is_server_only_and_consent_gated() {
         !broker.contains("X-Conch-Trial") && !broker.contains(r#"startsWith("trial_")"#),
         "token broker must validate a signed session, not client-attested trial state"
     );
-    assert!(signup.contains("createTrialSession"));
+    let confirm = fs::read_to_string(repo_root().join("api/trial-confirm.js"))
+        .expect("read trial confirmation API");
+    let usage = fs::read_to_string(repo_root().join("api/_usage.js")).expect("read usage helper");
+
+    assert!(signup.contains("createEmailConfirmation"));
+    assert!(confirm.contains("confirmTrialEmail"));
     assert!(session.contains("createHmac") && session.contains("timingSafeEqual"));
+    assert!(
+        usage.contains("perUserTrialBudgetCents") && usage.contains("globalFreeTrialBudgetCents")
+    );
+    assert!(usage.contains("1000") && usage.contains("1000000"));
     assert!(http.contains("Cache-Control") && http.contains("no-store"));
 
     assert!(

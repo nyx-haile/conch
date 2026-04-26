@@ -122,11 +122,11 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
     <section id="usage">
       <h2>BYOK or usage-based</h2>
       <ul>
-        <li>Free trial starts in the app.</li>
+        <li>Free trial starts only after email confirmation.</li>
         <li>Bring provider/model keys where Conch supports it.</li>
         <li>Use Conch-managed Deepgram and model usage on a metered basis when enabled.</li>
       </ul>
-      <p>Usage is based on actual managed voice/model activity. Local/offline sessions do not consume managed credits.</p>
+      <p>Confirmed free trials include $10 of managed usage per user and pause when aggregate free-trial usage reaches $10,000. Usage is based on managed voice/model activity. Local/offline sessions do not consume managed credits.</p>
     </section>
     <section>
       <h2>Consent and privacy</h2>
@@ -162,7 +162,7 @@ pub fn terms_page(config: &PublicSiteConfig) -> String {
     <p>Version {version}</p>
     <p>{company_legal_name}, at {company_address}, provides {company_name} for beta voice interview sessions.</p>
     <h2>Payments</h2>
-    <p>{billing_disclosure} Conch charges only after a separate explicit purchase or managed-usage agreement. The public app shell does not collect payment card data.</p>
+    <p>{billing_disclosure} Confirmed free trials include $10 of managed usage per user and pause when aggregate free-trial usage reaches $10,000. Conch charges only after a separate explicit purchase or managed-usage agreement. The public app shell does not collect payment card data.</p>
     <h2>Recording responsibilities</h2>
     <p>You are responsible for obtaining every consent required by law before recording or transcribing anyone. Do not use Conch for unlawful surveillance, biometric identification, children under 13, or regulated workflows without written approval.</p>
     <h2>Data rights</h2>

@@ -1,7 +1,46 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { globalFreeTrialBudgetCents, perUserTrialBudgetCents } from "./_usage.js";
 
 const trialDurationMs = 14 * 24 * 60 * 60 * 1000;
+const confirmationDurationMs = 30 * 60 * 1000;
 const fallbackDevSecret = "conch-local-dev-session-secret";
+
+export function createEmailConfirmation(email, now = Date.now()) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error("valid email required");
+  }
+
+  const payload = {
+    type: "email_confirmation",
+    confirmationId: `confirm_${randomUUID()}`,
+    email: normalizedEmail,
+    iat: Math.floor(now / 1000),
+    exp: Math.floor((now + confirmationDurationMs) / 1000),
+  };
+
+  return {
+    confirmationId: payload.confirmationId,
+    email: payload.email,
+    expiresAt: new Date(payload.exp * 1000).toISOString(),
+    confirmationToken: signPayload(payload),
+  };
+}
+
+export function confirmTrialEmail(confirmationToken, now = Date.now()) {
+  const confirmation = verifySignedPayload(confirmationToken, now);
+  if (
+    !confirmation ||
+    confirmation.type !== "email_confirmation" ||
+    typeof confirmation.confirmationId !== "string" ||
+    !confirmation.confirmationId.startsWith("confirm_") ||
+    !normalizeEmail(confirmation.email)
+  ) {
+    throw new Error("valid confirmation required");
+  }
+
+  return createTrialSession(confirmation.email, now);
+}
 
 export function createTrialSession(email, now = Date.now()) {
   const normalizedEmail = normalizeEmail(email);
@@ -10,9 +49,13 @@ export function createTrialSession(email, now = Date.now()) {
   }
 
   const payload = {
+    type: "trial_session",
     sessionId: `trial_${randomUUID()}`,
     email: normalizedEmail,
+    emailConfirmed: true,
     trial: "active",
+    trialBudgetCents: perUserTrialBudgetCents,
+    globalFreeTrialBudgetCents,
     iat: Math.floor(now / 1000),
     exp: Math.floor((now + trialDurationMs) / 1000),
   };
@@ -20,38 +63,27 @@ export function createTrialSession(email, now = Date.now()) {
   return {
     sessionId: payload.sessionId,
     email: payload.email,
+    emailConfirmed: payload.emailConfirmed,
     trial: payload.trial,
+    trialBudgetCents: payload.trialBudgetCents,
+    globalFreeTrialBudgetCents: payload.globalFreeTrialBudgetCents,
     expiresAt: new Date(payload.exp * 1000).toISOString(),
-    sessionToken: signTrialSession(payload),
+    sessionToken: signPayload(payload),
   };
 }
 
 export function verifyTrialSessionToken(token, now = Date.now()) {
-  if (typeof token !== "string" || token.length > 4096) {
-    return null;
-  }
-
-  const [encodedPayload, encodedSignature] = token.split(".");
-  if (!encodedPayload || !encodedSignature) {
-    return null;
-  }
-
-  const expectedSignature = hmac(encodedPayload);
-  if (!safeEqual(encodedSignature, expectedSignature)) {
-    return null;
-  }
-
-  const payload = parsePayload(encodedPayload);
-  if (!payload) {
-    return null;
-  }
-
+  const payload = verifySignedPayload(token, now);
   if (
+    !payload ||
+    payload.type !== "trial_session" ||
     typeof payload.sessionId !== "string" ||
     !payload.sessionId.startsWith("trial_") ||
     payload.trial !== "active" ||
-    typeof payload.exp !== "number" ||
-    payload.exp <= Math.floor(now / 1000)
+    payload.emailConfirmed !== true ||
+    !normalizeEmail(payload.email) ||
+    payload.trialBudgetCents !== perUserTrialBudgetCents ||
+    payload.globalFreeTrialBudgetCents !== globalFreeTrialBudgetCents
   ) {
     return null;
   }
@@ -68,7 +100,30 @@ export function extractBearerToken(request) {
   return Array.isArray(headerToken) ? headerToken[0] : headerToken || "";
 }
 
-function signTrialSession(payload) {
+function verifySignedPayload(token, now) {
+  if (typeof token !== "string" || token.length > 4096) {
+    return null;
+  }
+
+  const [encodedPayload, encodedSignature] = token.split(".");
+  if (!encodedPayload || !encodedSignature) {
+    return null;
+  }
+
+  const expectedSignature = hmac(encodedPayload);
+  if (!safeEqual(encodedSignature, expectedSignature)) {
+    return null;
+  }
+
+  const payload = parsePayload(encodedPayload);
+  if (!payload || typeof payload.exp !== "number" || payload.exp <= Math.floor(now / 1000)) {
+    return null;
+  }
+
+  return payload;
+}
+
+function signPayload(payload) {
   const encodedPayload = base64UrlEncode(JSON.stringify(payload));
   return `${encodedPayload}.${hmac(encodedPayload)}`;
 }
