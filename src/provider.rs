@@ -1,4 +1,4 @@
-use crate::llm::catalog::{openrouter_slug_for_depth, OPENROUTER_FREE_TIER_DEFAULT_SLUG};
+use crate::llm::catalog::openrouter_slug_for_depth;
 use crate::model::Model;
 use anyhow::{anyhow, Result};
 use std::str::FromStr;
@@ -63,6 +63,7 @@ impl FromStr for Provider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llm::catalog::OPENROUTER_FREE_TIER_DEFAULT_SLUG;
 
     #[test]
     fn parses_known_providers() {

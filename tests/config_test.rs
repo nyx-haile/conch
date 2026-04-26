@@ -33,7 +33,6 @@ fn config_from_env_reads_api_keys_and_provider() {
 }
 
 #[test]
-#[test]
 fn config_from_env_accepts_openrouter_gateway_alias() {
     let home = PathBuf::from("/tmp/fake-home");
     let mut env = std::collections::HashMap::new();
@@ -45,6 +44,7 @@ fn config_from_env_accepts_openrouter_gateway_alias() {
     assert_eq!(config.provider().unwrap(), Provider::OpenRouter);
 }
 
+#[test]
 fn config_from_env_errors_on_unknown_provider() {
     let home = PathBuf::from("/tmp/fake-home");
     let mut env = std::collections::HashMap::new();
