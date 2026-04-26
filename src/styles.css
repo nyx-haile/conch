@@ -262,7 +262,7 @@ h3 {
 }
 
 .path-list,
-.state-list {
+.step-list {
   display: grid;
   gap: 0.7rem;
   margin: 0;
@@ -271,7 +271,7 @@ h3 {
 }
 
 .path-list li,
-.state-list li {
+.step-list li {
   display: flex;
   align-items: center;
   gap: 0.7rem;
@@ -466,19 +466,28 @@ h3 {
   border-radius: 28px;
 }
 
-.state-list {
+.step-list {
   margin-top: 1rem;
 }
 
-.state-list li {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.86rem;
+.step-list li {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.92rem;
 }
 
-.state-list li.current {
+.step-list li.current {
   border-color: rgba(103, 232, 249, 0.62);
   color: #fff;
   background: rgba(103, 232, 249, 0.12);
+}
+
+.step-list strong {
+  color: #fff;
+}
+
+.step-list span {
+  color: var(--muted);
 }
 
 .legal-layout > p {

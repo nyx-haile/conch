@@ -284,6 +284,9 @@ fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
         "Deepgram",
         "voice_config_missing",
         "No subscription. No automatic charge.",
+        "Session checklist",
+        "What happens next",
+        "Ready to talk",
     ] {
         assert!(
             app.contains(required),
@@ -313,6 +316,9 @@ fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
         "BackgroundBeams",
         "motion/react",
         "Launch brief / Checkout beta",
+        "Finite app states",
+        "<strong>{state}</strong>",
+        "Session: {trialSession",
         "Request beta access",
         "View prepaid plans",
         "$29",

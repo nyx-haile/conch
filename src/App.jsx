@@ -6,18 +6,18 @@ const supportHref = `mailto:${contactEmail}?subject=Conch%20support`;
 const trialStorageKey = "conch_trial_session_v1";
 const consentVersion = "2026-04-26";
 
-const appStates = [
-  "signup_required",
-  "trial_pending",
-  "voice_config_missing",
-  "consent_required",
-  "ready_to_talk",
-  "listening",
-  "thinking",
-  "speaking",
-  "ended",
-  "error",
-];
+const appStatusCopy = {
+  signup_required: "Free trial required",
+  trial_pending: "Opening your trial",
+  voice_config_missing: "Voice setup needed",
+  consent_required: "Consent required",
+  ready_to_talk: "Ready to talk",
+  listening: "Listening",
+  thinking: "Processing",
+  speaking: "Speaking",
+  ended: "Session ended",
+  error: "Needs attention",
+};
 
 const productHighlights = [
   {
@@ -315,8 +315,8 @@ function SignupPage() {
         </p>
       </section>
       <aside className="state-card">
-        <h2>Trial flow</h2>
-        <StateList active={status === "trial_pending" ? "trial_pending" : "signup_required"} />
+        <h2>What happens next</h2>
+        <SignupSteps pending={status === "trial_pending"} />
       </aside>
     </main>
   );
@@ -531,7 +531,7 @@ function AppWorkspace() {
         </div>
 
         <div className="status-banner" data-state={state} role="status" aria-live="polite">
-          <strong>{state}</strong>
+          <strong>{appStatusCopy[state] || "App status"}</strong>
           <span>{statusText}</span>
         </div>
 
@@ -604,21 +604,57 @@ function AppWorkspace() {
       </section>
 
       <aside className="state-card section-frame">
-        <h2>Finite app states</h2>
-        <StateList active={state} />
+        <h2>Session checklist</h2>
+        <SessionChecklist
+          hasTrial={Boolean(trialSession)}
+          hasConsent={recordingConsentAccepted}
+          state={state}
+        />
         <p className="fine-print">
-          Session: {trialSession ? trialSession.id : "none"}
+          Trial: {trialSession ? "active" : "needed"}
         </p>
       </aside>
     </main>
   );
 }
 
-function StateList({ active }) {
+function SignupSteps({ pending }) {
+  const steps = [
+    ["Create a free trial", pending ? "Opening…" : "Use your email to start"],
+    ["Open Conch", "Land directly in /app"],
+    ["Accept recording consent", "Required before microphone access"],
+    ["Start voice", "Available when voice is configured"],
+  ];
+
+  return <StepList steps={steps} currentIndex={pending ? 0 : -1} />;
+}
+
+function SessionChecklist({ hasTrial, hasConsent, state }) {
+  const voiceReady = ["ready_to_talk", "listening", "thinking", "speaking", "ended"].includes(state);
+  const voiceBlocked = state === "voice_config_missing" || state === "error";
+  const transcriptActive = ["listening", "thinking", "speaking", "ended"].includes(state);
+  const steps = [
+    ["Free trial", hasTrial ? "Active" : "Create one to enter the app"],
+    ["Recording consent", hasConsent ? "Accepted" : "Needed before microphone access"],
+    [
+      "Voice connection",
+      voiceBlocked ? "Needs provider configuration" : voiceReady ? "Ready" : "Waiting for trial and consent",
+    ],
+    ["Transcript", transcriptActive ? "Real audio only" : "Appears after voice starts"],
+  ];
+  const currentIndex = !hasTrial ? 0 : !hasConsent ? 1 : voiceBlocked || !voiceReady ? 2 : 3;
+
+  return <StepList steps={steps} currentIndex={currentIndex} />;
+}
+
+function StepList({ steps, currentIndex }) {
   return (
-    <ol className="state-list">
-      {appStates.map((item) => (
-        <li className={item === active ? "current" : ""} key={item}>{item}</li>
+    <ol className="step-list">
+      {steps.map(([label, detail], index) => (
+        <li className={index === currentIndex ? "current" : ""} key={label}>
+          <strong>{label}</strong>
+          <span>{detail}</span>
+        </li>
       ))}
     </ol>
   );
