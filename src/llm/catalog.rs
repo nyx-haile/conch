@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use serde::{Deserialize, Serialize};
 
 /// Launch policy default for card-gated/free users.
 ///
@@ -10,14 +11,16 @@ pub const OPENROUTER_FREE_TIER_DEFAULT_SLUG: &str = "x-ai/grok-4-fast";
 pub const OPENROUTER_PAID_DEFAULT_SLUG: &str = "x-ai/grok-4.1-fast";
 pub const OPENROUTER_PREMIUM_DEFAULT_SLUG: &str = "anthropic/claude-sonnet-4.6";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModelTier {
     Free,
     Paid,
     Premium,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ModelEntitlement {
     Free,
     Paid,
@@ -35,7 +38,7 @@ impl ModelEntitlement {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ModelCatalogEntry {
     pub slug: &'static str,
     pub display_name: &'static str,
