@@ -10,15 +10,15 @@ const appStatusCopy = {
   signup_required: "Free trial required",
   trial_pending: "Opening your trial",
   email_confirmation_required: "Check your email",
-  auth_config_missing: "Auth setup needed",
-  usage_config_missing: "Usage metering needed",
+  auth_config_missing: "Voice unavailable",
+  usage_config_missing: "Voice unavailable",
   usage_limit_reached: "Trial limit reached",
   free_trials_closed: "Free trials paused",
-  voice_config_missing: "Voice setup needed",
+  voice_config_missing: "Voice unavailable",
   consent_required: "Consent required",
   ready_to_talk: "Ready to talk",
   listening: "Listening",
-  thinking: "Processing",
+  thinking: "Thinking",
   speaking: "Speaking",
   ended: "Session ended",
   error: "Needs attention",
@@ -27,18 +27,18 @@ const appStatusCopy = {
 const productHighlights = [
   {
     no: "01",
-    title: "Open the app first",
-    text: "Start at /app, confirm email for the free trial, accept recording consent, and begin a real voice session when Deepgram is configured.",
+    title: "Open and start talking",
+    text: "Confirm your email for a free trial, accept recording consent, and begin a real voice session.",
   },
   {
     no: "02",
-    title: "Deepgram underneath",
-    text: "Browser audio uses a short-lived token from Conch. Server credentials stay off the client bundle.",
+    title: "Real conversation",
+    text: "Conch listens to your voice and turns it into a launch-ready brief. No demo scripts, no fake transcripts.",
   },
   {
     no: "03",
     title: "No billing theater",
-    text: "Conch supports BYOK where possible and usage-based managed voice/model billing. No subscription. No automatic charge.",
+    text: "No subscription. No automatic charge. You only pay for what you actually use.",
   },
 ];
 
@@ -46,17 +46,17 @@ const usageOptions = [
   {
     no: "01",
     title: "Free trial",
-    text: "Confirm email to activate a $10 managed-usage trial. Free trials pause after $10,000 in aggregate managed usage.",
+    text: "Confirm your email and Conch opens with a starter trial. No card, no auto-renew.",
   },
   {
     no: "02",
-    title: "BYOK",
-    text: "Bring provider/model keys where Conch supports it. Keys remain server-side or in your controlled runtime.",
+    title: "Bring your own keys",
+    text: "Prefer to route through your own provider account? Conch supports it.",
   },
   {
     no: "03",
-    title: "Usage-based",
-    text: "Conch-managed Deepgram and model usage can be metered by actual session activity instead of fixed public tiers.",
+    title: "Pay as you talk",
+    text: "Past the trial, you only pay for actual session time.",
   },
 ];
 
@@ -67,11 +67,11 @@ const legalPages = {
     sections: [
       [
         "Beta status",
-        "Conch is an early beta voice-discovery app. The web app requires email confirmation before a trial session; durable exports and long-term storage remain backend milestones.",
+        "Conch is an early beta voice-discovery app. The web app requires email confirmation before a trial session. Long-term storage and exports are coming soon.",
       ],
       [
         "Payments",
-        "Pricing is BYOK and/or usage-based for Conch-managed voice and model usage. Confirmed free trials include $10 of managed usage per user and pause when aggregate free-trial usage reaches $10,000. No subscription. No automatic charge. Conch charges only after a separate explicit purchase or managed-usage agreement.",
+        "Pricing is bring-your-own-keys or pay-as-you-go for Conch-managed voice and model usage. Confirmed free trials include $10 of starter usage per user and pause when aggregate free-trial usage reaches $10,000. No subscription. No automatic charge. Conch charges only after a separate explicit purchase or usage agreement.",
       ],
       [
         "Recording responsibilities",
@@ -89,15 +89,15 @@ const legalPages = {
     sections: [
       [
         "What Conch needs",
-        "Conch collects the minimum account, email-confirmation, session, consent, usage-metering, audio, transcript, generated brief, provider-routing metadata, and logs needed to run the service.",
+        "Conch collects the minimum account, email, session, consent, audio, transcript, brief, and log data needed to run the service.",
       ],
       [
         "Processors",
-        "Deepgram may process audio for cloud speech-to-text and voice features when cloud mode is enabled. Payment processors may process billing metadata only when a separate paid workflow is enabled.",
+        "Deepgram may process audio for speech-to-text and voice features. Payment processors may process billing metadata only when a paid workflow is in use.",
       ],
       [
         "This public app",
-        "This app requests microphone access only after you accept the recording-consent gate and only after the deployment can issue a short-lived Deepgram token.",
+        "This app requests microphone access only after you accept the recording-consent gate and a voice session is available.",
       ],
       [
         "Contact",
@@ -123,7 +123,7 @@ const legalPages = {
       ],
       [
         "Provider boundary",
-        "Deepgram receives audio only after consent and only through Conch's short-lived access path or server proxy.",
+        "Deepgram receives audio only after you accept consent, and only through Conch.",
       ],
     ],
   },
@@ -255,15 +255,15 @@ function HomePage() {
           <p className="eyebrow">Voice discovery, for builders</p>
           <h1>Open Conch and <em>start talking.</em></h1>
           <p className="hero-lede">
-            Conch turns a live voice conversation into a product brief. Confirm email for a free trial,
-            accept recording consent, and use Deepgram-backed voice when this deployment is configured.
+            Conch turns a live voice conversation into a product brief. Confirm your email for a free trial,
+            accept recording consent, and start talking.
           </p>
           <div className="hero-actions">
             <a className="button button-primary" href="/app/signup">Start free</a>
             <a className="button button-secondary" href="/app">Open Conch</a>
           </div>
           <p className="trust-note">
-            BYOK where supported, or usage-based billing for Conch-managed voice and model usage. No subscription. No automatic charge.
+            Bring your own keys, or pay as you talk. No subscription. No automatic charge.
           </p>
         </div>
 
@@ -273,7 +273,7 @@ function HomePage() {
           </div>
           <div className="preview-topline">
             <span>App path</span>
-            <span>Deepgram-ready</span>
+            <span>Voice-ready</span>
           </div>
           <ol className="path-list">
             <li><strong>i</strong><span>Sign up for the free trial.</span></li>
@@ -296,10 +296,10 @@ function HomePage() {
 
       <section className="usage-section" id="usage">
         <div>
-          <p className="eyebrow">BYOK / Usage-based</p>
+          <p className="eyebrow">How it bills</p>
           <h2>No public price <em>theater</em>.</h2>
           <p>
-            The first product job is access: open the app, confirm a free trial, and talk. Each confirmed trial gets $10 of managed usage; free trials pause at $10,000 aggregate managed usage.
+            The first product job is access: open the app, confirm a free trial, and talk. Free trials open with a starter balance — past that, you pay only for what you use.
           </p>
         </div>
         <div className="usage-grid">
@@ -365,7 +365,7 @@ function SignupPage() {
         <p className="eyebrow">Free trial</p>
         <h1>Sign up, then <em>start talking</em>.</h1>
         <p>
-          Supabase Auth sends a confirmation link first. After email confirmation, Conch opens <code>/app</code> with a server-issued trial session.
+          We'll email you a confirmation link. Click it and Conch opens with your trial session ready.
         </p>
         <form className="signup-form" onSubmit={handleSubmit}>
           <label htmlFor="trial-email">Work email</label>
@@ -386,7 +386,7 @@ function SignupPage() {
           {error && <p className="error-text">{error}</p>}
         </form>
         <p className="fine-print">
-          No card collection in this app shell. Confirmed free trials include $10 of managed usage per user and pause at $10,000 aggregate free-trial usage.
+          No card required. Free trials open with a starter balance — talk until it's used.
         </p>
       </section>
     </main>
@@ -407,7 +407,7 @@ function ConfirmPage() {
 
     if (!accessToken && !tokenHash) {
       setStatus("email_confirmation_required");
-      setMessage("This Supabase confirmation link is missing a session token. Start the free trial again.");
+      setMessage("This confirmation link is missing or expired. Start the free trial again.");
       return;
     }
 
@@ -505,13 +505,13 @@ function AppWorkspace() {
 
     if (!recordingConsentAccepted) {
       setState("consent_required");
-      setStatusText("Recording consent is required before microphone capture or Deepgram streaming.");
+      setStatusText("Recording consent is required before we can listen.");
       return;
     }
 
     try {
       setState("thinking");
-      setStatusText("Requesting a short-lived Deepgram voice token from Conch…");
+      setStatusText("Preparing your voice session…");
       const tokenResponse = await fetch("/api/deepgram-token", {
         method: "POST",
         headers: {
@@ -534,10 +534,10 @@ function AppWorkspace() {
       }
 
       if (!tokenResponse.ok || !tokenPayload.access_token) {
-        throw new Error(tokenPayload.message || "Could not start Deepgram voice.");
+        throw new Error(tokenPayload.message || "Could not start the voice session.");
       }
 
-      setStatusText("Token ready. Opening microphone after consent…");
+      setStatusText("Opening your microphone…");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -562,16 +562,16 @@ function AppWorkspace() {
         recorder.start(250);
         const maxSessionMs = Math.max(30, Number(tokenPayload.max_session_seconds || 600)) * 1000;
         sessionTimerRef.current = window.setTimeout(() => {
-          stopVoiceRun("ended", "Free-trial voice window ended. Start another run if you still have trial budget.");
+          stopVoiceRun("ended", "Trial session ended. Start another if you'd like to keep talking.");
         }, maxSessionMs);
         setState("listening");
-        setStatusText("Listening with Deepgram. Speak naturally; stop when done.");
+        setStatusText("Listening. Speak naturally; stop when done.");
       };
 
       websocket.onmessage = (event) => handleDeepgramMessage(event.data);
       websocket.onerror = () => {
-        setError("Deepgram WebSocket failed. Stop the run and try again.");
-        stopVoiceRun("error", "Deepgram WebSocket failed. Stop the run and try again.");
+        setError("The voice connection dropped. Stop and try again.");
+        stopVoiceRun("error", "The voice connection dropped. Stop and try again.");
       };
       websocket.onclose = () => {
         stopLocalMedia();
@@ -609,7 +609,7 @@ function AppWorkspace() {
           },
         ]);
         setState("thinking");
-        setStatusText("Captured a final transcript turn. Conch backend response is pending durable session wiring.");
+        setStatusText("Captured. Conch is thinking…");
       } else {
         setInterimText(transcript);
         setState("listening");
@@ -668,10 +668,10 @@ function AppWorkspace() {
     <main className="workspace-layout">
       <section className="workspace-main" aria-label="Conch voice workspace">
         <div className="workspace-heading">
-          <p className="eyebrow">/app — voice studio</p>
+          <p className="eyebrow">Voice studio</p>
           <h1>Talk to <em>Conch</em>.</h1>
           <p>
-            This is the real app entry. It does not show sample transcripts or fake briefs: it waits for signup, recording consent, and Deepgram configuration.
+            This is the real app — no sample transcripts, no canned briefs. Conch waits for your signup and consent, then starts listening.
           </p>
         </div>
 
@@ -692,7 +692,7 @@ function AppWorkspace() {
               <div>
                 <h2>Recording consent</h2>
                 <p>
-                  Confirm you have permission from every participant before microphone capture or Deepgram streaming begins.
+                  Confirm you have permission from every participant before recording begins.
                 </p>
               </div>
               <button
@@ -736,7 +736,7 @@ function AppWorkspace() {
               </article>
               <article className="session-card">
                 <div className="card-label"><span>Brief</span><span>Pending</span></div>
-                <p>Generated brief output will appear only after durable Conch session wiring is complete.</p>
+                <p>Your brief will appear here once the session wraps.</p>
               </article>
               <article className="session-card">
                 <div className="card-label"><span>Status</span><span>Studio</span></div>
@@ -777,10 +777,10 @@ function LegalPage({ page }) {
 function StatusPage() {
   return (
     <main className="legal-layout">
-      <p className="eyebrow">Public app status</p>
+      <p className="eyebrow">Status</p>
       <h1>Conch is <em>online</em>.</h1>
       <p>
-        The app-first web surface is serving <code>/</code>, <code>/app</code>, <code>/app/signup</code>, legal, consent, and status routes. Voice availability depends on the server-side Deepgram token broker configuration.
+        All systems up. If voice doesn't open right away, give it a moment and try again.
       </p>
       <div className="hero-actions">
         <a className="button button-primary" href="/app">Open Conch</a>
