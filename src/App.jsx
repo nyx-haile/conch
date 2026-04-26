@@ -10,7 +10,7 @@ const appStatusCopy = {
   signup_required: "Free trial required",
   trial_pending: "Opening your trial",
   email_confirmation_required: "Check your email",
-  email_config_missing: "Email setup needed",
+  auth_config_missing: "Auth setup needed",
   usage_config_missing: "Usage metering needed",
   usage_limit_reached: "Trial limit reached",
   free_trials_closed: "Free trials paused",
@@ -263,14 +263,12 @@ function SignupPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
-  const [confirmationUrl, setConfirmationUrl] = useState("");
   const [error, setError] = useState("");
 
   async function handleSubmit(event) {
     event.preventDefault();
     setStatus("trial_pending");
     setMessage("");
-    setConfirmationUrl("");
     setError("");
 
     try {
@@ -285,7 +283,6 @@ function SignupPage() {
       }
       setStatus("email_confirmation_required");
       setMessage(payload.message || "Check your email to confirm this free trial.");
-      setConfirmationUrl(payload.devConfirmationUrl || "");
     } catch (err) {
       setStatus("error");
       setError(err instanceof Error ? err.message : "Could not start the free trial.");
@@ -298,7 +295,7 @@ function SignupPage() {
         <p className="eyebrow">Free trial</p>
         <h1>Sign up, then start talking.</h1>
         <p>
-          This requests a server-issued trial session and sends you into `/app`. When Deepgram is configured on the deployment, Conch can request a short-lived voice token after consent.
+          Supabase Auth sends a confirmation link first. After email confirmation, Conch opens `/app` with a server-issued trial session.
         </p>
         <form className="signup-form" onSubmit={handleSubmit}>
           <label htmlFor="trial-email">Work email</label>
@@ -316,7 +313,6 @@ function SignupPage() {
             {status === "trial_pending" ? "Sending confirmation…" : "Start free"}
           </button>
           {message && <p className="success-text">{message}</p>}
-          {confirmationUrl && <a className="button button-secondary" href={confirmationUrl}>Open dev confirmation link</a>}
           {error && <p className="error-text">{error}</p>}
         </form>
         <p className="fine-print">
@@ -333,10 +329,15 @@ function ConfirmPage() {
   const [message, setMessage] = useState("Confirming your email…");
 
   useEffect(() => {
-    const token = new URLSearchParams(window.location.search).get("token") || "";
-    if (!token) {
+    const query = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const accessToken = hash.get("access_token") || query.get("access_token") || "";
+    const tokenHash = query.get("token_hash") || hash.get("token_hash") || "";
+    const type = query.get("type") || hash.get("type") || "email";
+
+    if (!accessToken && !tokenHash) {
       setStatus("email_confirmation_required");
-      setMessage("This confirmation link is missing a token. Start the free trial again.");
+      setMessage("This Supabase confirmation link is missing a session token. Start the free trial again.");
       return;
     }
 
@@ -345,7 +346,7 @@ function ConfirmPage() {
         const response = await fetch("/api/trial-confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ accessToken, tokenHash, type }),
         });
         const payload = await safeJson(response);
         if (!response.ok || !payload.sessionToken) {

@@ -81,7 +81,7 @@ export default async function handler(request, response) {
       return;
     }
 
-    const usageReservation = await reserveTrialTokenGrant(session.email);
+    const usageReservation = await reserveTrialTokenGrant(session);
     if (!usageReservation.ok) {
       response.status(usageReservation.status).json({
         state: usageReservation.state,

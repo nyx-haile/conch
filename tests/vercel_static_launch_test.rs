@@ -97,6 +97,7 @@ fn javascript_app_has_app_first_build_contract() {
         "vite.config.js",
         "src/styles.css",
         "api/_session.js",
+        "api/_supabase.js",
         "api/_usage.js",
         "api/trial-signup.js",
         "api/trial-confirm.js",
@@ -172,6 +173,7 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         "Deepgram",
         "voice_config_missing",
         "email_confirmation_required",
+        "auth_config_missing",
         "$10 of managed usage",
         "$10,000",
         "No subscription. No automatic charge.",
@@ -192,6 +194,7 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         "trial_pending",
         "voice_config_missing",
         "email_confirmation_required",
+        "auth_config_missing",
         "usage_config_missing",
         "consent_required",
         "ready_to_talk",
@@ -220,6 +223,7 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
     let signup = read("api/trial-signup.js");
     let session = read("api/_session.js");
     let usage = read("api/_usage.js");
+    let migration = read("supabase/migrations/20260426190000_conch_trial_usage.sql");
     let http = read("api/_http.js");
 
     for required in [
@@ -248,14 +252,12 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
         "token broker must not trust self-attested trial headers or raw trial id shape"
     );
     assert!(
-        signup.contains("createEmailConfirmation"),
-        "signup API must require email confirmation before trial sessions"
+        signup.contains("requestSupabaseEmailConfirmation"),
+        "signup API must use Supabase Auth email confirmation before trial sessions"
     );
 
     for required in [
         "usage_config_missing",
-        "usage_limit_reached",
-        "free_trials_closed",
         "perUserTrialBudgetCents",
         "globalFreeTrialBudgetCents",
         "1000",
@@ -264,6 +266,18 @@ fn deepgram_token_broker_is_server_only_and_no_store() {
         assert!(
             usage.contains(required),
             "usage helper missing `{required}`"
+        );
+    }
+
+    for required in [
+        "conch_reserve_trial_usage",
+        "usage_limit_reached",
+        "free_trials_closed",
+        "conch_trial_usage_events",
+    ] {
+        assert!(
+            migration.contains(required),
+            "Supabase migration missing `{required}`"
         );
     }
 

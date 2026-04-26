@@ -396,9 +396,19 @@ fn deepgram_token_endpoint_is_server_only_and_consent_gated() {
         .expect("read trial confirmation API");
     let usage = fs::read_to_string(repo_root().join("api/_usage.js")).expect("read usage helper");
 
-    assert!(signup.contains("createEmailConfirmation"));
-    assert!(confirm.contains("confirmTrialEmail"));
+    let supabase =
+        fs::read_to_string(repo_root().join("api/_supabase.js")).expect("read Supabase helper");
+    let migration = fs::read_to_string(
+        repo_root().join("supabase/migrations/20260426190000_conch_trial_usage.sql"),
+    )
+    .expect("read Supabase trial migration");
+
+    assert!(signup.contains("requestSupabaseEmailConfirmation"));
+    assert!(confirm.contains("getSupabaseUserFromAccessToken"));
+    assert!(confirm.contains("verifySupabaseOtp"));
     assert!(session.contains("createHmac") && session.contains("timingSafeEqual"));
+    assert!(supabase.contains("/auth/v1/otp") && supabase.contains("/rest/v1/rpc/"));
+    assert!(migration.contains("conch_reserve_trial_usage"));
     assert!(
         usage.contains("perUserTrialBudgetCents") && usage.contains("globalFreeTrialBudgetCents")
     );

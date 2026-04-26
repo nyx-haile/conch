@@ -1,116 +1,75 @@
-import { createHash } from "node:crypto";
+import { callSupabaseRpc, supabaseConfigMissing, supabaseConfigured } from "./_supabase.js";
 
 export const perUserTrialBudgetCents = Number.parseInt(process.env.CONCH_TRIAL_USER_BUDGET_CENTS || "1000", 10);
 export const globalFreeTrialBudgetCents = Number.parseInt(process.env.CONCH_FREE_TRIAL_GLOBAL_BUDGET_CENTS || "1000000", 10);
-export const tokenGrantReservationCents = Number.parseInt(process.env.CONCH_TRIAL_TOKEN_RESERVATION_CENTS || "100", 10);
+export const tokenGrantReservationCents = Number.parseInt(process.env.CONCH_TRIAL_TOKEN_RESERVATION_CENTS || "1000", 10);
 
-const namespace = process.env.CONCH_USAGE_NAMESPACE || "conch:trial";
-
-export async function reserveTrialTokenGrant(email) {
-  return reserveTrialUsage(email, tokenGrantReservationCents);
+export async function reserveTrialTokenGrant(session) {
+  return reserveTrialUsage(session, tokenGrantReservationCents);
 }
 
-export async function assertTrialUsageStoreReady() {
-  if (usageStoreConfigured() || allowUnmeteredDevTrials()) {
-    return { ok: true };
-  }
-  return usageConfigMissing();
+export async function ensureTrialUsageAccount(user) {
+  if (!supabaseConfigured({ service: true })) return usageConfigMissing();
+  const payload = await callSupabaseRpc("conch_ensure_trial_account", {
+    p_user_id: user.id,
+    p_email: user.email,
+    p_per_user_budget_cents: perUserTrialBudgetCents,
+    p_global_budget_cents: globalFreeTrialBudgetCents,
+  });
+  return normalizeUsagePayload(payload);
 }
 
-async function reserveTrialUsage(email, cents) {
-  if (!usageStoreConfigured()) {
-    if (allowUnmeteredDevTrials()) {
-      return {
-        ok: true,
-        usageEnforced: false,
-        reservationCents: 0,
-        perUserBudgetCents,
-        globalFreeTrialBudgetCents,
-      };
-    }
-    return usageConfigMissing();
-  }
-
-  const userKey = `${namespace}:user:${hashEmail(email)}:cents`;
-  const globalKey = `${namespace}:global:cents`;
-  const [userUsed, globalUsed] = await Promise.all([redisNumber("GET", userKey), redisNumber("GET", globalKey)]);
-
-  if (userUsed + cents > perUserTrialBudgetCents) {
+async function reserveTrialUsage(session, cents) {
+  if (!supabaseConfigured({ service: true })) return usageConfigMissing();
+  if (!session?.supabaseUserId || !session?.email) {
     return {
       ok: false,
-      state: "usage_limit_reached",
-      status: 402,
-      message: "This free-trial email has reached its $10 managed-usage budget.",
-      perUserUsedCents: userUsed,
+      state: "signup_required",
+      status: 401,
+      message: "Supabase-confirmed trial session required.",
       perUserBudgetCents,
-      globalUsedCents: globalUsed,
       globalFreeTrialBudgetCents,
     };
   }
 
-  if (globalUsed + cents > globalFreeTrialBudgetCents) {
+  const payload = await callSupabaseRpc("conch_reserve_trial_usage", {
+    p_user_id: session.supabaseUserId,
+    p_email: session.email,
+    p_reservation_cents: cents,
+    p_per_user_budget_cents: perUserTrialBudgetCents,
+    p_global_budget_cents: globalFreeTrialBudgetCents,
+  });
+  return normalizeUsagePayload(payload);
+}
+
+function normalizeUsagePayload(payload) {
+  if (!payload?.ok) {
     return {
+      ...usageConfigMissing(),
+      ...(payload || {}),
       ok: false,
-      state: "free_trials_closed",
-      status: 403,
-      message: "Free trials are temporarily closed after the managed-usage pool reached $10,000.",
-      perUserUsedCents: userUsed,
-      perUserBudgetCents,
-      globalUsedCents: globalUsed,
-      globalFreeTrialBudgetCents,
+      status: payload?.status || payload?.status_code || payload?.http_status || 503,
     };
   }
 
-  const [nextUser, nextGlobal] = await Promise.all([redisNumber("INCRBY", userKey, cents), redisNumber("INCRBY", globalKey, cents)]);
   return {
     ok: true,
     usageEnforced: true,
-    reservationCents: cents,
-    perUserUsedCents: nextUser,
-    perUserBudgetCents,
-    globalUsedCents: nextGlobal,
-    globalFreeTrialBudgetCents,
+    reservationCents: payload.reservation_cents || payload.reservationCents || 0,
+    perUserUsedCents: payload.per_user_used_cents || payload.perUserUsedCents || 0,
+    perUserBudgetCents: payload.per_user_budget_cents || payload.perUserBudgetCents || perUserTrialBudgetCents,
+    globalUsedCents: payload.global_used_cents || payload.globalUsedCents || 0,
+    globalFreeTrialBudgetCents: payload.global_budget_cents || payload.globalFreeTrialBudgetCents || globalFreeTrialBudgetCents,
   };
-}
-
-function usageStoreConfigured() {
-  return Boolean(redisUrl() && redisToken());
-}
-
-function allowUnmeteredDevTrials() {
-  return process.env.NODE_ENV !== "production" || process.env.CONCH_ALLOW_UNMETERED_DEV_TRIALS === "true";
 }
 
 function usageConfigMissing() {
+  const missing = supabaseConfigMissing();
   return {
-    ok: false,
+    ...missing,
     state: "usage_config_missing",
-    status: 503,
-    message: "Free trials need server-side usage metering before voice can start.",
+    message: "Supabase Postgres trial usage tables and RPC functions must be configured before voice can start.",
     perUserBudgetCents,
     globalFreeTrialBudgetCents,
   };
-}
-
-async function redisNumber(command, ...args) {
-  const response = await fetch(`${redisUrl()}/${[command, ...args].map(encodeURIComponent).join("/")}`, {
-    headers: { Authorization: `Bearer ${redisToken()}` },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error || `Usage store ${command} failed.`);
-  }
-  return Number.parseInt(payload.result || "0", 10) || 0;
-}
-
-function redisUrl() {
-  return (process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || "").replace(/\/$/, "");
-}
-
-function redisToken() {
-  return process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || "";
-}
-
-function hashEmail(email) {
-  return createHash("sha256").update(String(email).trim().toLowerCase()).digest("hex");
 }

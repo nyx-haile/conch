@@ -2,66 +2,30 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { globalFreeTrialBudgetCents, perUserTrialBudgetCents } from "./_usage.js";
 
 const trialDurationMs = 14 * 24 * 60 * 60 * 1000;
-const confirmationDurationMs = 30 * 60 * 1000;
 const fallbackDevSecret = "conch-local-dev-session-secret";
 
-export function createEmailConfirmation(email, now = Date.now()) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    throw new Error("valid email required");
-  }
-
-  const payload = {
-    type: "email_confirmation",
-    confirmationId: `confirm_${randomUUID()}`,
-    email: normalizedEmail,
-    iat: Math.floor(now / 1000),
-    exp: Math.floor((now + confirmationDurationMs) / 1000),
-  };
-
-  return {
-    confirmationId: payload.confirmationId,
-    email: payload.email,
-    expiresAt: new Date(payload.exp * 1000).toISOString(),
-    confirmationToken: signPayload(payload),
-  };
-}
-
-export function confirmTrialEmail(confirmationToken, now = Date.now()) {
-  const confirmation = verifySignedPayload(confirmationToken, now);
-  if (
-    !confirmation ||
-    confirmation.type !== "email_confirmation" ||
-    typeof confirmation.confirmationId !== "string" ||
-    !confirmation.confirmationId.startsWith("confirm_") ||
-    !normalizeEmail(confirmation.email)
-  ) {
-    throw new Error("valid confirmation required");
-  }
-
-  return createTrialSession(confirmation.email, now);
-}
-
-export function createTrialSession(email, now = Date.now()) {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) {
-    throw new Error("valid email required");
+export function createTrialSession(user, usage = {}, now = Date.now()) {
+  const normalizedEmail = normalizeEmail(user?.email);
+  if (!normalizedEmail || !user?.id) {
+    throw new Error("confirmed Supabase user required");
   }
 
   const payload = {
     type: "trial_session",
     sessionId: `trial_${randomUUID()}`,
+    supabaseUserId: user.id,
     email: normalizedEmail,
     emailConfirmed: true,
     trial: "active",
-    trialBudgetCents: perUserTrialBudgetCents,
-    globalFreeTrialBudgetCents,
+    trialBudgetCents: usage.perUserBudgetCents || perUserTrialBudgetCents,
+    globalFreeTrialBudgetCents: usage.globalFreeTrialBudgetCents || globalFreeTrialBudgetCents,
     iat: Math.floor(now / 1000),
     exp: Math.floor((now + trialDurationMs) / 1000),
   };
 
   return {
     sessionId: payload.sessionId,
+    supabaseUserId: payload.supabaseUserId,
     email: payload.email,
     emailConfirmed: payload.emailConfirmed,
     trial: payload.trial,
@@ -79,6 +43,7 @@ export function verifyTrialSessionToken(token, now = Date.now()) {
     payload.type !== "trial_session" ||
     typeof payload.sessionId !== "string" ||
     !payload.sessionId.startsWith("trial_") ||
+    typeof payload.supabaseUserId !== "string" ||
     payload.trial !== "active" ||
     payload.emailConfirmed !== true ||
     !normalizeEmail(payload.email) ||
@@ -135,6 +100,7 @@ function hmac(value) {
 function sessionSecret() {
   return (
     process.env.CONCH_SESSION_SIGNING_SECRET?.trim() ||
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
     process.env.DEEPGRAM_API_KEY?.trim() ||
     fallbackDevSecret
   );
