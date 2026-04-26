@@ -280,6 +280,7 @@ fn implementation_files() -> Vec<PathBuf> {
                 && !has_component(path, "target")
                 && !has_component(path, ".git")
                 && !has_component(path, ".omx")
+                && !has_component(path, ".vercel")
                 && !path.ends_with("Cargo.lock")
         })
         .collect()
@@ -326,7 +327,7 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
         if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
             if matches!(
                 name.as_ref(),
-                ".git" | ".omx" | "target" | "node_modules" | "dist" | "build"
+                ".git" | ".omx" | ".vercel" | "target" | "node_modules" | "dist" | "build"
             ) {
                 continue;
             }

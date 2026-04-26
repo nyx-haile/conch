@@ -1,13 +1,29 @@
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 #[test]
-fn vercel_serves_static_launch_directory_at_site_root() {
+fn vercel_builds_the_javascript_app_at_site_root() {
     let config = read("vercel.json");
 
     assert!(
-        config.contains(r#""outputDirectory": "web/static""#),
-        "Vercel must publish web/static as the deployment root so / and /terms.html resolve"
+        config.contains(r#""buildCommand": "npm run build""#),
+        "Vercel must build the JavaScript app before publishing"
+    );
+    assert!(
+        config.contains(r#""outputDirectory": "dist""#),
+        "Vercel must publish Vite's dist directory at the deployment root"
+    );
+    assert!(
+        config.contains(r#""source": "/terms.html""#)
+            && config.contains(r#""source": "/privacy.html""#)
+            && config.contains(r#""source": "/recording-consent.html""#)
+            && config.contains(r#""source": "/status.html""#),
+        "legacy public legal/status URLs must rewrite into the SPA"
+    );
+    assert!(
+        config.contains("script-src 'self'") && !config.contains("script-src 'none'"),
+        "CSP must allow the built JavaScript bundle while keeping scripts same-origin"
     );
     for header in [
         "Content-Security-Policy",
@@ -21,67 +37,105 @@ fn vercel_serves_static_launch_directory_at_site_root() {
 }
 
 #[test]
-fn launch_static_pages_do_not_ship_placeholder_or_broken_root_links() {
-    let static_root = repo_path("web/static");
+fn javascript_launch_app_has_required_build_contract() {
+    let package = read_json("package.json");
+    let scripts = package
+        .get("scripts")
+        .and_then(Value::as_object)
+        .expect("package.json scripts object");
+    assert_eq!(
+        scripts.get("build").and_then(Value::as_str),
+        Some("vite build"),
+        "npm run build must create the Vite dist deployment"
+    );
+    assert!(
+        package
+            .pointer("/dependencies/react")
+            .and_then(Value::as_str)
+            .is_some(),
+        "React must be present for the JavaScript app"
+    );
+    assert!(
+        package
+            .pointer("/dependencies/motion")
+            .and_then(Value::as_str)
+            .is_some(),
+        "motion must be present for the Aceternity-inspired animated UI"
+    );
+
+    for path in [
+        "index.html",
+        "src/main.jsx",
+        "src/App.jsx",
+        "vite.config.js",
+        "src/components/BackgroundBeams.jsx",
+        "src/styles.css",
+        "public/favicon.svg",
+        "public/robots.txt",
+        "public/sitemap.xml",
+    ] {
+        assert!(
+            repo_path(path).exists(),
+            "missing JavaScript app asset {path}"
+        );
+    }
+}
+
+#[test]
+fn javascript_launch_app_is_placeholder_free_and_root_routable() {
     let mut failures = Vec::new();
 
-    for entry in fs::read_dir(&static_root).expect("read web/static") {
-        let entry = entry.expect("static entry");
-        let path = entry.path();
-        if path.extension().and_then(|ext| ext.to_str()) != Some("html") {
-            continue;
+    for path in [
+        "index.html",
+        "src/main.jsx",
+        "src/App.jsx",
+        "vite.config.js",
+        "src/components/BackgroundBeams.jsx",
+        "src/styles.css",
+        "public/robots.txt",
+        "public/sitemap.xml",
+    ] {
+        let contents = read(path);
+        for forbidden in [
+            "example.com",
+            "status.example.com",
+            "#payments-disabled",
+            "nyx@users.noreply.github.com",
+            "/web/static/",
+            "navigator.mediaDevices.getUserMedia",
+            ".getUserMedia(",
+            "new MediaRecorder(",
+        ] {
+            if contents.contains(forbidden) {
+                failures.push(format!("{path}: contains forbidden `{forbidden}`"));
+            }
         }
-        let html = fs::read_to_string(&path).expect("read html page");
-        let relative = path.strip_prefix(repo_root()).unwrap().display();
+    }
 
-        for forbidden in ["example.com", "status.example.com", "#payments-disabled"] {
-            if html.contains(forbidden) {
-                failures.push(format!("{relative}: contains placeholder `{forbidden}`"));
-            }
-        }
-
-        for href in hrefs(&html) {
-            if let Some(root_path) = href.strip_prefix('/') {
-                let root_path = root_path.split(['?', '#']).next().unwrap_or(root_path);
-                let target = if root_path.is_empty() {
-                    static_root.join("index.html")
-                } else {
-                    static_root.join(root_path)
-                };
-                if !target.exists() {
-                    failures.push(format!(
-                        "{relative}: root link `{href}` has no static target"
-                    ));
-                }
-            }
-            if href.starts_with("/web/static/") {
-                failures.push(format!(
-                    "{relative}: link `{href}` leaks the Vercel output directory"
-                ));
-            }
-        }
+    let app = read("src/App.jsx");
+    for required in [
+        "conch@theos.sh",
+        "/terms.html",
+        "/privacy.html",
+        "/recording-consent.html",
+        "/status.html",
+        "No subscription. No automatic charge.",
+    ] {
+        assert!(
+            app.contains(required),
+            "JavaScript app missing `{required}`"
+        );
     }
 
     assert!(
         failures.is_empty(),
-        "static launch pages must be root-routable and placeholder-free:\n{}",
+        "JavaScript launch app must be root-routable and placeholder-free:\n{}",
         failures.join("\n")
     );
 }
 
-fn hrefs(html: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = html;
-    while let Some(pos) = rest.find("href=\"") {
-        rest = &rest[pos + 6..];
-        if let Some(end) = rest.find('"') {
-            out.push(rest[..end].to_string());
-            rest = &rest[end + 1..];
-        } else {
-            break;
-        }
-    }
-    out
+fn read_json(path: &str) -> Value {
+    serde_json::from_str(&read(path)).unwrap_or_else(|err| panic!("parse {path}: {err}"))
 }
 
 fn read(path: &str) -> String {
