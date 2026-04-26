@@ -11,3 +11,7 @@
 *.db
 .beads-credential-key
 .omx/
+.vercel
+.env*.local
+
+.beads/export-state.json

@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 
-pub const LEGAL_VERSION: &str = "2026-04-25";
+pub const LEGAL_VERSION: &str = "2026-04-26";
 pub const REQUIRED_BILLING_DISCLOSURE: &str =
     "Card required. No subscription. No automatic charge.";
 pub const RECORDING_CONSENT_BUTTON: &str = "I have consent — start recording";
@@ -19,11 +19,11 @@ impl PublicSiteConfig {
     pub fn beta_placeholder() -> Self {
         Self {
             company_name: "Conch".to_string(),
-            company_legal_name: "Conch Labs, Inc. (placeholder)".to_string(),
-            company_address: "Company address placeholder".to_string(),
-            support_email: "support@example.com".to_string(),
-            billing_email: "billing@example.com".to_string(),
-            status_url: "https://status.example.com".to_string(),
+            company_legal_name: "Conch beta".to_string(),
+            company_address: "United States".to_string(),
+            support_email: "conch@theos.sh".to_string(),
+            billing_email: "conch@theos.sh".to_string(),
+            status_url: "/status.html".to_string(),
         }
     }
 }
@@ -115,6 +115,7 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Conch — Voice interviews to launch-ready briefs</title>
   <meta name="description" content="Run guided voice interviews and turn messy spoken discovery into structured briefs." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 </head>
 <body>
   <header>
@@ -131,7 +132,7 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
       <p>Voice interviews for builders</p>
       <h1>Conch turns spoken discovery into launch-ready briefs.</h1>
       <p>Run a live voice interview, capture the messy thinking, and leave with a structured brief your team can act on.</p>
-      <p><strong>{billing_disclosure}</strong> Audio is processed only to run your session. You are responsible for getting consent before recording other people.</p>
+      <p><strong>{billing_disclosure}</strong> This beta contact surface does not collect microphone audio, payment card data, or provider API keys. Audio is processed only after a session starts in the app and you are responsible for getting consent before recording other people.</p>
       <p>
         <a href="{trial_href}"{disabled_attr}>Start free — card required, no auto-charge</a>
         <a href="#pricing">Buy prepaid usage credits</a>
@@ -177,14 +178,14 @@ pub fn terms_page(config: &PublicSiteConfig) -> String {
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><title>Conch Terms of Service</title></head>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Conch Terms of Service</title><link rel="icon" href="/favicon.svg" type="image/svg+xml" /></head>
 <body>
   <main>
     <h1>Terms of Service</h1>
     <p>Version {version}</p>
     <p>{company_legal_name}, at {company_address}, provides {company_name} for beta voice interview sessions.</p>
     <h2>Payments</h2>
-    <p>{billing_disclosure} A saved payment method from the free trial is a card-verification signal only. Conch charges you only when you separately buy prepaid usage credits.</p>
+    <p>{billing_disclosure} A saved payment method from the free trial is a card-verification signal only. Conch charges you only when you separately buy prepaid usage credits. This static deployment is an information and contact surface, not an active payment checkout.</p>
     <h2>Recording responsibilities</h2>
     <p>You are responsible for obtaining every consent required by law before recording or transcribing anyone. Do not use Conch for unlawful surveillance, biometric identification, children under 13, or regulated workflows without written approval.</p>
     <h2>Data rights</h2>
@@ -205,7 +206,7 @@ pub fn privacy_page(config: &PublicSiteConfig) -> String {
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><title>Conch Privacy Policy</title></head>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Conch Privacy Policy</title><link rel="icon" href="/favicon.svg" type="image/svg+xml" /></head>
 <body>
   <main>
     <h1>Privacy Policy</h1>
@@ -213,6 +214,7 @@ pub fn privacy_page(config: &PublicSiteConfig) -> String {
     <p>Conch collects the minimum account, Stripe customer/payment metadata, audio, transcript, generated brief, provider-routing metadata, and logs needed to run the service.</p>
     <p>Deepgram may process audio for cloud speech-to-text when cloud mode is enabled. Stripe processes payments and stores card details; raw card data does not touch Conch servers.</p>
     <p>Provider API keys are server-only and are not exposed to browser code.</p>
+    <p>This static deployment does not collect microphone audio, payment card data, or provider API keys.</p>
     <p>Contact <a href="mailto:{support_email}">{support_email}</a> for export, deletion, or saved-card removal requests.</p>
   </main>
 </body>
@@ -226,14 +228,15 @@ pub fn recording_consent_page(config: &PublicSiteConfig) -> String {
     format!(
         r#"<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><title>Conch Recording Consent Notice</title></head>
+<head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Conch Recording Consent Notice</title><link rel="icon" href="/favicon.svg" type="image/svg+xml" /></head>
 <body>
   <main>
     <h1>Recording Consent Notice</h1>
     <p>Version {version}</p>
     <p>Conch records and transcribes audio when you start a session. Recording laws vary by location. Some places require consent from every participant.</p>
     <p>By starting a session, you confirm that you have the right to record and transcribe the conversation and that every required participant has consented.</p>
-    <button type="button">{button}</button>
+    <p>This static launch page does not request microphone access. The app must show a consent gate before any microphone capture or Deepgram streaming.</p>
+    <p>In-app consent action label: <strong>{button}</strong>.</p>
     <p>Questions? Contact <a href="mailto:{support_email}">{support_email}</a>.</p>
   </main>
 </body>
