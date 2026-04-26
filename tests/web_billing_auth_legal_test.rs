@@ -265,7 +265,8 @@ fn legal_pages_cover_billing_privacy_and_recording_consent_invariants() {
     assert!(combined.contains("raw card data does not touch Conch servers"));
     assert!(combined.contains("Provider API keys are server-only"));
     assert!(combined.contains(RECORDING_CONSENT_BUTTON));
-    assert!(landing.contains("aria-disabled=\"true\""));
+    assert!(landing.contains("/app/signup"));
+    assert!(landing.contains("Open Conch"));
 
     assert_eq!(
         require_recording_consent(None),

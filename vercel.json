@@ -3,6 +3,8 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/app", "destination": "/" },
+    { "source": "/app/signup", "destination": "/" },
     { "source": "/terms.html", "destination": "/" },
     { "source": "/privacy.html", "destination": "/" },
     { "source": "/recording-consent.html", "destination": "/" },
@@ -14,7 +16,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://api.deepgram.com wss://agent.deepgram.com; upgrade-insecure-requests"
         },
         {
           "key": "X-Content-Type-Options",
@@ -29,12 +31,71 @@
           "value": "no-referrer"
         },
         {
-          "key": "Permissions-Policy",
-          "value": "camera=(), geolocation=(), microphone=(), payment=()"
-        },
-        {
           "key": "Cache-Control",
           "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/app",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(self), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/app/signup",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/terms.html",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/privacy.html",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/recording-consent.html",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/status.html",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
         }
       ]
     }

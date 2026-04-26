@@ -268,6 +268,127 @@ fn web_interview_ui_preserves_tui_labels_when_present() {
     );
 }
 
+#[test]
+fn app_first_surface_replaces_animation_fake_brief_and_fixed_pricing() {
+    let app = fs::read_to_string(repo_root().join("src/App.jsx")).expect("read App.jsx");
+    let package = fs::read_to_string(repo_root().join("package.json")).expect("read package.json");
+    let vercel = fs::read_to_string(repo_root().join("vercel.json")).expect("read vercel.json");
+
+    for required in [
+        "/app",
+        "/app/signup",
+        "Start free",
+        "Open Conch",
+        "BYOK",
+        "usage-based",
+        "Deepgram",
+        "voice_config_missing",
+        "No subscription. No automatic charge.",
+    ] {
+        assert!(
+            app.contains(required),
+            "app-first web surface missing `{required}`"
+        );
+    }
+
+    for state in [
+        "signup_required",
+        "trial_pending",
+        "voice_config_missing",
+        "consent_required",
+        "ready_to_talk",
+        "listening",
+        "thinking",
+        "speaking",
+        "ended",
+        "error",
+    ] {
+        assert!(
+            app.contains(state),
+            "web app missing finite state `{state}`"
+        );
+    }
+
+    for forbidden in [
+        "BackgroundBeams",
+        "motion/react",
+        "Launch brief / Checkout beta",
+        "Request beta access",
+        "View prepaid plans",
+        "$29",
+        "$199",
+        "$499",
+    ] {
+        assert!(
+            !app.contains(forbidden),
+            "App.jsx still contains forbidden `{forbidden}`"
+        );
+        assert!(
+            !vercel.contains(forbidden),
+            "vercel.json still contains forbidden `{forbidden}`"
+        );
+    }
+
+    assert!(
+        !package.contains(r#""motion""#),
+        "motion package must be removed with the old animated launch surface"
+    );
+    assert!(
+        !repo_root()
+            .join("src/components/BackgroundBeams.jsx")
+            .exists(),
+        "BackgroundBeams component should not exist after removing the animation"
+    );
+}
+
+#[test]
+fn deepgram_token_endpoint_is_server_only_and_consent_gated() {
+    let broker = fs::read_to_string(repo_root().join("api/deepgram-token.js"))
+        .expect("read Deepgram token broker");
+    let app = fs::read_to_string(repo_root().join("src/App.jsx")).expect("read App.jsx");
+
+    let signup =
+        fs::read_to_string(repo_root().join("api/trial-signup.js")).expect("read trial signup API");
+    let session = fs::read_to_string(repo_root().join("api/_session.js"))
+        .expect("read session signing helper");
+    let http = fs::read_to_string(repo_root().join("api/_http.js")).expect("read HTTP helper");
+
+    for required in [
+        "process.env.DEEPGRAM_API_KEY",
+        "https://api.deepgram.com/v1/auth/grant",
+        "verifyTrialSessionToken",
+        "extractBearerToken",
+        "ttl_seconds",
+        "setJsonNoStoreHeaders",
+        "signup_required",
+        "consent_required",
+        "voice_config_missing",
+    ] {
+        assert!(
+            broker.contains(required),
+            "token broker missing `{required}`"
+        );
+    }
+
+    assert!(
+        !broker.contains("X-Conch-Trial") && !broker.contains(r#"startsWith("trial_")"#),
+        "token broker must validate a signed session, not client-attested trial state"
+    );
+    assert!(signup.contains("createTrialSession"));
+    assert!(session.contains("createHmac") && session.contains("timingSafeEqual"));
+    assert!(http.contains("Cache-Control") && http.contains("no-store"));
+
+    assert!(
+        !app.contains("DEEPGRAM_API_KEY"),
+        "browser app must not reference the server-only Deepgram env var"
+    );
+    assert!(
+        app.find("recordingConsentAccepted").unwrap_or(usize::MAX)
+            < app.find("navigator.mediaDevices.getUserMedia").unwrap_or(0),
+        "recording consent state must appear before getUserMedia in browser code"
+    );
+}
+
 fn implementation_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
     collect_files(&repo_root(), &mut files);

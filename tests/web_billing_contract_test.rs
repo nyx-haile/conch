@@ -247,9 +247,10 @@ fn legal_and_static_surfaces_include_required_payment_and_consent_copy() {
 
     for surface in [&landing, &terms] {
         assert!(surface.contains(REQUIRED_BILLING_DISCLOSURE));
-        assert!(surface.contains("prepaid"));
+        assert!(surface.contains("usage-based") || surface.contains("managed usage"));
     }
-    assert!(landing.contains("aria-disabled=\"true\""));
+    assert!(landing.contains("/app/signup"));
+    assert!(landing.contains("Open Conch"));
     assert!(privacy.contains("raw card data does not touch Conch servers"));
     assert!(privacy.contains("Provider API keys are server-only"));
     assert!(recording.contains(RECORDING_CONSENT_BUTTON));
