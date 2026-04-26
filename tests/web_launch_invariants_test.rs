@@ -219,7 +219,7 @@ fn web_interview_ui_preserves_tui_labels_when_present() {
             let looks_like_interview_ui = lower_path.contains("interview")
                 || lower_path.contains("session")
                 || lower_path.contains("workspace")
-                || lower_contents.contains("transcript")
+                || lower_contents.contains("✣ conch")
                 || lower_contents.contains("hold space")
                 || lower_contents.contains("tap space");
             looks_like_interview_ui.then_some((file, contents))
