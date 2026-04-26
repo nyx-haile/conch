@@ -14,7 +14,10 @@ fn billing_code_cannot_create_subscriptions_or_off_session_charges() {
         let relative = display_path(&file);
 
         for (label, needle) in [
-            ("Stripe Checkout subscription mode", "\"mode\":\"subscription\""),
+            (
+                "Stripe Checkout subscription mode",
+                "\"mode\":\"subscription\"",
+            ),
             ("Stripe Checkout subscription mode", "mode:\"subscription\""),
             ("Stripe Checkout subscription mode", "mode='subscription'"),
             ("Stripe Checkout subscription mode", "mode=subscription"),

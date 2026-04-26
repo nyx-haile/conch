@@ -303,10 +303,9 @@ impl WorkspaceModelPolicyRecord {
                 entry.provider.as_route().to_string(),
             ));
         }
-        if !self.allowed_tiers.contains(&entry.tier)
-            && !(entry.tier == ModelTier::Byok && self.byok_enabled)
-            && entitlements.model_tier != ModelTier::Admin
-        {
+        let tier_allowed_by_policy = self.allowed_tiers.contains(&entry.tier)
+            || entry.tier == ModelTier::Byok && self.byok_enabled;
+        if !tier_allowed_by_policy && entitlements.model_tier != ModelTier::Admin {
             return Err(ModelPolicyError::TierNotInWorkspacePolicy(entry.tier));
         }
         if entry.tier == ModelTier::Byok {

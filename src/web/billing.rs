@@ -281,11 +281,9 @@ impl CreditLedger {
                     .entry(workspace_id.clone())
                     .or_insert_with(|| WorkspaceCreditBalance::empty(workspace_id));
                 let before = balance.paid_seconds_remaining;
-                balance.paid_seconds_remaining =
-                    balance.paid_seconds_remaining.saturating_sub(seconds_to_revoke.max(0));
-                Ok(LedgerOutcome::PaidCreditsRevoked {
-                    seconds: before - balance.paid_seconds_remaining,
-                })
+                let seconds = seconds_to_revoke.max(0).min(before);
+                balance.paid_seconds_remaining -= seconds;
+                Ok(LedgerOutcome::PaidCreditsRevoked { seconds })
             }
         }
     }
@@ -331,9 +329,7 @@ impl CreditLedger {
                 balance.payment_method_id = event.payment_method_id;
                 balance.payment_method_detach_after = Some(
                     event.completed_at
-                        + Duration::days(
-                            TRIAL_DAYS + UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY,
-                        ),
+                        + Duration::days(TRIAL_DAYS + UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY),
                 );
                 Ok(LedgerOutcome::TrialGranted {
                     seconds: balance.trial_seconds_remaining,

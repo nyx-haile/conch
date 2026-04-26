@@ -85,7 +85,10 @@ pub fn checkout_disclosure() -> &'static str {
 }
 
 pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
-    let trial_href = ctas.trial_signup_url.as_deref().unwrap_or("#payments-disabled");
+    let trial_href = ctas
+        .trial_signup_url
+        .as_deref()
+        .unwrap_or("#payments-disabled");
     let starter_href = ctas
         .starter_pack_url
         .as_deref()
@@ -105,7 +108,7 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
     };
 
     format!(
-        r#"<!doctype html>
+        r##"<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -131,7 +134,7 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
       <p><strong>{billing_disclosure}</strong> Audio is processed only to run your session. You are responsible for getting consent before recording other people.</p>
       <p>
         <a href="{trial_href}"{disabled_attr}>Start free — card required, no auto-charge</a>
-        <a href="#pricing">Buy usage credits</a>
+        <a href="#pricing">Buy prepaid usage credits</a>
       </p>
     </section>
     <section id="pricing">
@@ -157,7 +160,7 @@ pub fn landing_page(config: &PublicSiteConfig, ctas: &CtaLinks) -> String {
     <a href="mailto:{billing_email}">Billing</a>
   </footer>
 </body>
-</html>"#,
+</html>"##,
         billing_disclosure = REQUIRED_BILLING_DISCLOSURE,
         billing_email = config.billing_email,
         disabled_attr = disabled_attr,

@@ -1,61 +1,40 @@
-mod web {
-    pub mod billing {
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/billing.rs"));
-    }
-
-    pub mod auth {
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/auth.rs"));
-    }
-
-    pub mod legal {
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/web/legal.rs"));
-    }
-}
-
-use web::{auth, legal};
-
 use chrono::{Duration, TimeZone, Utc};
-use web::auth::{
-    start_signup, AccountStatus, AuthError, SignupRequest, WorkspaceTier, CURRENT_PRIVACY_VERSION,
-    CURRENT_RECORDING_CONSENT_VERSION, CURRENT_TERMS_VERSION,
+use conch::web::auth::{
+    require_active_session, AuthError, AuthSession, SignupRequest, WorkspacePrincipal,
 };
-use web::billing::{
-    prepaid_pack_checkout, trial_setup_checkout, BillingError, BillingLedger, PrepaidPack,
-    SetupIntentUsage, StripeCheckoutMode, StripeWebhookEvent, WebhookOutcome,
-    STRIPE_CARD_STORAGE_DISCLOSURE, TRIAL_DAYS, TRIAL_STT_MINUTES,
+use conch::web::billing::{
+    BillingError, CheckoutConfig, CheckoutMode, CheckoutSessionCompleted, CheckoutSessionDraft,
+    CheckoutUrls, CreditLedger, LedgerOutcome, LegalUrls, PrepaidPack, SavedPaymentMethodUse,
+    StripeWebhookEvent, UsageDebit, CHECKOUT_TRUST_COPY, TRIAL_DAYS, TRIAL_MINUTES,
     UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY,
 };
-
-fn valid_signup(email: &str) -> SignupRequest {
-    SignupRequest {
-        email: email.to_owned(),
-        accepted_terms_version: Some(CURRENT_TERMS_VERSION.to_owned()),
-        accepted_privacy_version: Some(CURRENT_PRIVACY_VERSION.to_owned()),
-        accepted_recording_consent_version: Some(CURRENT_RECORDING_CONSENT_VERSION.to_owned()),
-    }
-}
+use conch::web::legal::{
+    checkout_disclosure, landing_page, privacy_page, recording_consent_page,
+    require_recording_consent, terms_page, CtaLinks, InterviewStartGate, PublicSiteConfig,
+    RecordingConsentAcceptance, RECORDING_CONSENT_BUTTON, REQUIRED_BILLING_DISCLOSURE,
+};
 
 #[test]
 fn setup_mode_checkout_is_card_gate_not_charge_or_subscription() {
-    let checkout = trial_setup_checkout(
-        "cus_trial",
+    let checkout = CheckoutSessionDraft::trial_setup(
+        &checkout_config(false),
         "workspace_1",
-        "https://conch.test/app?setup=success",
-        "https://conch.test/pricing?setup=cancelled",
-    );
+        "founder@example.com",
+    )
+    .unwrap();
 
-    assert_eq!(checkout.mode, StripeCheckoutMode::Setup);
+    assert_eq!(checkout.mode, CheckoutMode::Setup);
+    assert_eq!(checkout.mode.as_str(), "setup");
+    assert_eq!(checkout.pack, None);
+    assert_eq!(checkout.price_lookup_key, None);
     assert_eq!(
-        checkout.setup_intent_usage,
-        Some(SetupIntentUsage::OnSession)
+        checkout.payment_method_use,
+        Some(SavedPaymentMethodUse::CustomerPresentOnly)
     );
-    assert!(checkout.line_items.is_empty());
-    assert!(!checkout.allows_subscription);
-    assert!(!checkout.allows_automatic_charge);
-    assert!(!checkout.stores_raw_card_data);
-    assert!(checkout.consent_copy.contains("No subscription"));
-    assert!(checkout.consent_copy.contains("No automatic charge"));
-    checkout.assert_launch_safe().unwrap();
+    assert_eq!(checkout.payment_method_use.unwrap().as_str(), "on_session");
+    assert_eq!(checkout.trust_copy, CHECKOUT_TRUST_COPY);
+    assert!(checkout.trust_copy.contains("No subscription"));
+    assert!(checkout.trust_copy.contains("No automatic charge"));
 }
 
 #[test]
@@ -65,223 +44,275 @@ fn prepaid_packs_are_one_time_payment_checkouts() {
             PrepaidPack::Starter,
             2_900,
             1_000,
-            "CONCH_STRIPE_STARTER_PRICE_ID",
+            "conch_starter_1000_stt_minutes",
         ),
         (
             PrepaidPack::Team,
             19_900,
             10_000,
-            "CONCH_STRIPE_TEAM_PRICE_ID",
+            "conch_team_10000_stt_minutes",
         ),
         (
             PrepaidPack::Pilot,
             49_900,
             30_000,
-            "CONCH_STRIPE_PILOT_PRICE_ID",
+            "conch_pilot_30000_stt_minutes",
         ),
     ];
 
-    for (pack, cents, minutes, price_env) in cases {
-        assert_eq!(pack.amount_cents(), cents);
+    for (pack, cents, minutes, lookup_key) in cases {
+        assert_eq!(pack.price_cents(), cents);
         assert_eq!(pack.stt_minutes(), minutes);
-        let checkout = prepaid_pack_checkout(
-            pack,
-            "cus_paid",
-            "workspace_paid",
-            "https://conch.test/app?payment=success",
-            "https://conch.test/pricing?payment=cancelled",
-        );
-        assert_eq!(checkout.mode, StripeCheckoutMode::Payment);
-        assert_eq!(checkout.setup_intent_usage, None);
-        assert_eq!(checkout.line_items.len(), 1);
-        assert_eq!(checkout.line_items[0].price_env, price_env);
-        assert!(!checkout.allows_subscription);
-        assert!(!checkout.allows_automatic_charge);
-        assert!(checkout.consent_copy.contains("One-time prepaid"));
-        checkout.assert_launch_safe().unwrap();
+        assert_eq!(pack.credit_seconds(), i64::from(minutes) * 60);
+
+        let checkout =
+            CheckoutSessionDraft::prepaid_pack(&checkout_config(false), "workspace_1", pack)
+                .unwrap();
+        assert_eq!(checkout.mode, CheckoutMode::Payment);
+        assert_eq!(checkout.mode.as_str(), "payment");
+        assert_eq!(checkout.payment_method_use, None);
+        assert_eq!(checkout.pack, Some(pack));
+        assert_eq!(checkout.price_lookup_key.as_deref(), Some(lookup_key));
+        assert!(checkout.trust_copy.contains("prepaid credits"));
     }
 }
 
 #[test]
-fn unsafe_checkout_shapes_are_rejected() {
-    let mut setup = trial_setup_checkout("cus", "workspace", "success", "cancel");
-    setup.mode = StripeCheckoutMode::Subscription;
+fn unsafe_or_live_placeholder_checkout_shapes_are_rejected() {
     assert_eq!(
-        setup.assert_launch_safe(),
-        Err(BillingError::SubscriptionNotAllowed)
+        CheckoutMode::try_from("subscription").unwrap_err(),
+        BillingError::UnsupportedCheckoutMode("subscription".to_string())
     );
 
-    let mut off_session = trial_setup_checkout("cus", "workspace", "success", "cancel");
-    off_session.setup_intent_usage = Some(SetupIntentUsage::OffSession);
-    assert_eq!(
-        off_session.assert_launch_safe(),
-        Err(BillingError::AutomaticChargeNotAllowed)
-    );
+    let err = CheckoutSessionDraft::trial_setup(
+        &checkout_config(true),
+        "workspace_1",
+        "founder@example.com",
+    )
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        BillingError::LivePaymentPlaceholder {
+            field: "success_url",
+            ..
+        }
+    ));
 }
 
 #[test]
 fn setup_webhook_grants_trial_once_and_sets_card_detach_date() {
-    let now = Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0).unwrap();
-    let mut ledger = BillingLedger::new("workspace_1", "cus_trial");
-    let event = StripeWebhookEvent::CheckoutSessionCompletedSetup {
-        event_id: "evt_setup_1".to_owned(),
-        checkout_session_id: "cs_setup_1".to_owned(),
-        stripe_customer_id: "cus_trial".to_owned(),
-        setup_intent_id: "seti_1".to_owned(),
-        payment_method_id: "pm_1".to_owned(),
-    };
+    let now = instant();
+    let mut ledger = CreditLedger::new();
+    let event = setup_completed_event("evt_setup_1", now);
 
-    let outcome = ledger.process_webhook(event.clone(), now).unwrap();
-    assert_eq!(outcome, WebhookOutcome::GrantedTrial(TRIAL_STT_MINUTES));
-    assert!(ledger.trial_card_verified);
-    assert_eq!(ledger.trial_minutes_remaining, TRIAL_STT_MINUTES);
-    assert_eq!(ledger.grants.len(), 1);
     assert_eq!(
-        ledger.grants[0].expires_at,
-        now + Duration::days(TRIAL_DAYS)
-    );
-    assert_eq!(
-        ledger.grants[0].payment_method_detach_after,
-        Some(now + Duration::days(TRIAL_DAYS + UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY))
-    );
-
-    let duplicate = ledger.process_webhook(event, now).unwrap();
-    assert_eq!(duplicate, WebhookOutcome::DuplicateIgnored);
-    assert_eq!(ledger.trial_minutes_remaining, TRIAL_STT_MINUTES);
-    assert_eq!(ledger.grants.len(), 1);
-}
-
-#[test]
-fn paid_pack_webhooks_are_idempotent_across_checkout_and_payment_intent_events() {
-    let now = Utc.with_ymd_and_hms(2026, 4, 25, 13, 0, 0).unwrap();
-    let mut ledger = BillingLedger::new("workspace_1", "cus_paid");
-
-    let checkout_event = StripeWebhookEvent::CheckoutSessionCompletedPayment {
-        event_id: "evt_checkout_paid".to_owned(),
-        checkout_session_id: Some("cs_paid".to_owned()),
-        stripe_customer_id: "cus_paid".to_owned(),
-        payment_intent_id: "pi_paid".to_owned(),
-        pack: PrepaidPack::Team,
-    };
-    assert_eq!(
-        ledger.process_webhook(checkout_event, now).unwrap(),
-        WebhookOutcome::GrantedPaidPack {
-            pack: PrepaidPack::Team,
-            minutes: 10_000,
-        }
-    );
-
-    let payment_intent_event = StripeWebhookEvent::PaymentIntentSucceeded {
-        event_id: "evt_pi_paid".to_owned(),
-        payment_intent_id: "pi_paid".to_owned(),
-        stripe_customer_id: "cus_paid".to_owned(),
-        checkout_session_id: Some("cs_paid".to_owned()),
-        pack: PrepaidPack::Team,
-    };
-    assert_eq!(
-        ledger.process_webhook(payment_intent_event, now).unwrap(),
-        WebhookOutcome::DuplicateIgnored
-    );
-    assert_eq!(ledger.paid_minutes_remaining, 10_000);
-    assert_eq!(ledger.grants.len(), 1);
-}
-
-#[test]
-fn expired_checkout_and_subscription_events_do_not_provision_credits() {
-    let now = Utc.with_ymd_and_hms(2026, 4, 25, 14, 0, 0).unwrap();
-    let mut ledger = BillingLedger::new("workspace_1", "cus_trial");
-
-    let expired = StripeWebhookEvent::CheckoutSessionExpired {
-        event_id: "evt_expired".to_owned(),
-        checkout_session_id: "cs_expired".to_owned(),
-        stripe_customer_id: "cus_trial".to_owned(),
-    };
-    assert_eq!(
-        ledger.process_webhook(expired, now).unwrap(),
-        WebhookOutcome::NoGrantExpired
-    );
-    assert_eq!(ledger.trial_minutes_remaining, 0);
-
-    let subscription = StripeWebhookEvent::SubscriptionCreated {
-        event_id: "evt_sub".to_owned(),
-        stripe_customer_id: "cus_trial".to_owned(),
-        subscription_id: "sub_1".to_owned(),
-    };
-    assert_eq!(
-        ledger.process_webhook(subscription, now),
-        Err(BillingError::SubscriptionNotAllowed)
-    );
-}
-
-#[test]
-fn signup_requires_current_legal_acceptance_before_card_gate() {
-    let now = Utc.with_ymd_and_hms(2026, 4, 25, 15, 0, 0).unwrap();
-    let missing = SignupRequest {
-        email: "founder@example.com".to_owned(),
-        accepted_terms_version: Some(CURRENT_TERMS_VERSION.to_owned()),
-        accepted_privacy_version: None,
-        accepted_recording_consent_version: Some(CURRENT_RECORDING_CONSENT_VERSION.to_owned()),
-    };
-    assert_eq!(
-        start_signup(missing, "user_1", "workspace_1", "cus_1", now),
-        Err(AuthError::MissingLegalAcceptance {
-            label: "privacy",
-            expected: CURRENT_PRIVACY_VERSION,
+        ledger.apply(StripeWebhookEvent::CheckoutSessionCompleted(event.clone())),
+        Ok(LedgerOutcome::TrialGranted {
+            seconds: i64::from(TRIAL_MINUTES) * 60,
         })
     );
+    assert_eq!(
+        ledger.apply(StripeWebhookEvent::CheckoutSessionCompleted(event)),
+        Ok(LedgerOutcome::DuplicateIgnored)
+    );
 
-    let onboarding = start_signup(
-        valid_signup(" Founder@Example.com "),
-        "user_1",
-        "workspace_1",
-        "cus_1",
-        now,
-    )
-    .unwrap();
-    assert_eq!(onboarding.email, "founder@example.com");
-    assert_eq!(onboarding.status, AccountStatus::PendingCardSetup);
-    assert_eq!(onboarding.tier, WorkspaceTier::Trial);
-    assert!(onboarding
-        .billing_disclosure
-        .contains("No automatic charge"));
-
-    let checkout = onboarding.checkout_for_card_gate("success", "cancel");
-    assert_eq!(checkout.mode, StripeCheckoutMode::Setup);
-    checkout.assert_launch_safe().unwrap();
+    let balance = ledger.balance("workspace_1").unwrap();
+    assert_eq!(
+        balance.trial_seconds_remaining,
+        i64::from(TRIAL_MINUTES) * 60
+    );
+    assert_eq!(
+        balance.trial_expires_at,
+        Some(now + Duration::days(TRIAL_DAYS))
+    );
+    assert_eq!(balance.payment_method_id.as_deref(), Some("pm_trial"));
+    assert_eq!(
+        balance.payment_method_detach_after,
+        Some(now + Duration::days(TRIAL_DAYS + UNUSED_TRIAL_CARD_DETACH_DAYS_AFTER_EXPIRY))
+    );
 }
 
 #[test]
-fn auth_surface_exposes_legal_links_before_payment() {
-    let copy = auth::auth_surface_copy();
-    assert!(copy.primary_cta.contains("card required"));
-    assert!(copy.billing_disclosure.contains("No subscription"));
-    let hrefs: Vec<_> = copy.legal_links.iter().map(|link| link.href).collect();
-    assert!(hrefs.contains(&"/terms.html"));
-    assert!(hrefs.contains(&"/privacy.html"));
-    assert!(hrefs.contains(&"/recording-consent.html"));
+fn paid_pack_webhooks_are_idempotent_and_refunds_cannot_go_negative() {
+    let mut ledger = CreditLedger::new();
+    let paid = CheckoutSessionCompleted {
+        event_id: "evt_paid_1".to_string(),
+        session_id: "cs_paid".to_string(),
+        mode: CheckoutMode::Payment,
+        workspace_id: "workspace_1".to_string(),
+        stripe_customer_id: "cus_paid".to_string(),
+        payment_method_id: None,
+        pack: Some(PrepaidPack::Team),
+        completed_at: instant(),
+    };
+
+    assert_eq!(
+        ledger.apply(StripeWebhookEvent::CheckoutSessionCompleted(paid.clone())),
+        Ok(LedgerOutcome::PaidPackGranted {
+            pack: PrepaidPack::Team,
+            seconds: 600_000,
+        })
+    );
+    assert_eq!(
+        ledger.apply(StripeWebhookEvent::CheckoutSessionCompleted(paid)),
+        Ok(LedgerOutcome::DuplicateIgnored)
+    );
+
+    assert_eq!(
+        ledger.apply(StripeWebhookEvent::PaidPackRefunded {
+            event_id: "evt_refund_1".to_string(),
+            workspace_id: "workspace_1".to_string(),
+            seconds_to_revoke: 999_999,
+        }),
+        Ok(LedgerOutcome::PaidCreditsRevoked { seconds: 600_000 })
+    );
+    assert_eq!(
+        ledger
+            .balance("workspace_1")
+            .unwrap()
+            .paid_seconds_remaining,
+        0
+    );
+}
+
+#[test]
+fn expired_checkouts_and_local_stt_do_not_consume_or_provision_credits() {
+    let mut ledger = CreditLedger::new();
+
+    assert_eq!(
+        ledger.apply(StripeWebhookEvent::CheckoutSessionExpired {
+            event_id: "evt_expired".to_string(),
+            session_id: "cs_expired".to_string(),
+        }),
+        Ok(LedgerOutcome::NoCreditGrant)
+    );
+    assert!(ledger.balance("workspace_1").is_none());
+
+    ledger
+        .apply(StripeWebhookEvent::CheckoutSessionCompleted(
+            setup_completed_event("evt_setup_2", instant()),
+        ))
+        .unwrap();
+    let before = ledger
+        .balance("workspace_1")
+        .unwrap()
+        .total_seconds_remaining();
+    assert_eq!(
+        ledger.debit_usage("workspace_1", UsageDebit::LocalStt { seconds: 600 }),
+        Ok(LedgerOutcome::NoCreditGrant)
+    );
+    assert_eq!(
+        ledger
+            .balance("workspace_1")
+            .unwrap()
+            .total_seconds_remaining(),
+        before
+    );
+}
+
+#[test]
+fn signup_requires_terms_and_active_session_before_use() {
+    assert_eq!(
+        SignupRequest::new("founder@example.com", "").unwrap_err(),
+        AuthError::MissingTermsAcceptance
+    );
+    assert_eq!(
+        SignupRequest::new("not-an-email", "terms-2026-04-25").unwrap_err(),
+        AuthError::InvalidEmail
+    );
+
+    let signup = SignupRequest::new(" Founder@Example.com ", "terms-2026-04-25").unwrap();
+    assert_eq!(signup.email, "founder@example.com");
+
+    let session = AuthSession {
+        principal: WorkspacePrincipal {
+            user_id: "user_1".to_string(),
+            workspace_id: "workspace_1".to_string(),
+            email: signup.email,
+        },
+        expires_at: instant() + Duration::hours(1),
+    };
+    assert_eq!(
+        require_active_session(Some(&session), instant())
+            .unwrap()
+            .workspace_id,
+        "workspace_1"
+    );
+    assert_eq!(
+        require_active_session(Some(&session), instant() + Duration::hours(2)).unwrap_err(),
+        AuthError::ExpiredSession
+    );
 }
 
 #[test]
 fn legal_pages_cover_billing_privacy_and_recording_consent_invariants() {
-    let pages = legal::legal_pages();
-    let combined = pages
-        .iter()
-        .map(|page| page.body)
-        .collect::<Vec<_>>()
-        .join("\n");
+    let config = PublicSiteConfig::beta_placeholder();
+    let landing = landing_page(&config, &CtaLinks::disabled());
+    let terms = terms_page(&config);
+    let privacy = privacy_page(&config);
+    let recording = recording_consent_page(&config);
+    let combined = [
+        landing.as_str(),
+        terms.as_str(),
+        privacy.as_str(),
+        recording.as_str(),
+    ]
+    .join("\n");
 
+    assert_eq!(checkout_disclosure(), REQUIRED_BILLING_DISCLOSURE);
     assert!(combined.contains("No subscription"));
     assert!(combined.contains("No automatic charge"));
-    assert!(combined.contains(STRIPE_CARD_STORAGE_DISCLOSURE));
-    assert!(combined.contains("permission to record and transcribe"));
-    assert!(combined.contains("Provider API keys stay server-side"));
+    assert!(combined.contains("raw card data does not touch Conch servers"));
+    assert!(combined.contains("Provider API keys are server-only"));
+    assert!(combined.contains(RECORDING_CONSENT_BUTTON));
+    assert!(landing.contains("aria-disabled=\"true\""));
 
-    let links = legal::legal_footer_links();
-    assert!(links.contains(&("Terms", "/terms.html")));
-    assert!(links.contains(&("Privacy", "/privacy.html")));
-    assert!(links.contains(&("Recording Consent", "/recording-consent.html")));
+    assert_eq!(
+        require_recording_consent(None),
+        InterviewStartGate::MissingRecordingConsent
+    );
+    let consent = RecordingConsentAcceptance::new("workspace_1", instant());
+    assert_eq!(
+        require_recording_consent(Some(&consent)),
+        InterviewStartGate::Allowed
+    );
+}
 
-    let trust_copy = legal::payment_trust_copy().join(" ");
-    assert!(trust_copy.contains("No automatic renewal"));
-    assert!(trust_copy.contains("Public payment links must stay disabled"));
+fn checkout_config(live_payments_enabled: bool) -> CheckoutConfig {
+    CheckoutConfig {
+        urls: CheckoutUrls {
+            success_url: "https://example.com/success".to_string(),
+            cancel_url: "https://example.com/cancel".to_string(),
+        },
+        legal: LegalUrls {
+            terms_url: "https://example.com/terms".to_string(),
+            privacy_url: "https://example.com/privacy".to_string(),
+            recording_consent_url: "https://example.com/recording-consent".to_string(),
+            support_email: "support@example.com".to_string(),
+            billing_email: "billing@example.com".to_string(),
+        },
+        live_payments_enabled,
+    }
+}
+
+fn setup_completed_event(
+    event_id: &str,
+    completed_at: chrono::DateTime<Utc>,
+) -> CheckoutSessionCompleted {
+    CheckoutSessionCompleted {
+        event_id: event_id.to_string(),
+        session_id: "cs_setup".to_string(),
+        mode: CheckoutMode::Setup,
+        workspace_id: "workspace_1".to_string(),
+        stripe_customer_id: "cus_trial".to_string(),
+        payment_method_id: Some("pm_trial".to_string()),
+        pack: None,
+        completed_at,
+    }
+}
+
+fn instant() -> chrono::DateTime<Utc> {
+    Utc.with_ymd_and_hms(2026, 4, 25, 12, 0, 0)
+        .single()
+        .unwrap()
 }

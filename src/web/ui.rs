@@ -54,7 +54,7 @@ pub enum SidebarMobileBehavior {
     Sticky,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LayoutRegion {
     pub id: &'static str,
     pub label: &'static str,
@@ -65,7 +65,7 @@ pub struct LayoutRegion {
     pub mobile_behavior: SidebarMobileBehavior,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InterviewLayoutContract {
     pub version: &'static str,
     pub tokens: UiTokenContract,
@@ -179,7 +179,7 @@ pub fn interview_layout_contract() -> InterviewLayoutContract {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct KeyboardControl {
     pub key: &'static str,
     pub label: &'static str,
@@ -235,7 +235,7 @@ pub enum TranscriptLineKind {
     Cursor,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SpeakerStyle {
     pub speaker: WebSpeaker,
     pub label: &'static str,
@@ -257,7 +257,7 @@ pub fn speaker_style(speaker: WebSpeaker) -> SpeakerStyle {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TranscriptLine {
     pub kind: TranscriptLineKind,
     pub speaker: WebSpeaker,
@@ -279,7 +279,7 @@ impl TranscriptLine {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct StatusView {
     pub status: WebStatus,
     pub glyph: &'static str,
@@ -321,7 +321,7 @@ pub fn status_view(status: WebStatus, banner: Option<&str>) -> StatusView {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TopBarView {
     pub title: String,
     pub elapsed: String,
@@ -329,7 +329,7 @@ pub struct TopBarView {
     pub model_chip: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ConsentBannerView {
     pub required_before_mic_capture: bool,
     pub accepted: bool,
@@ -337,7 +337,7 @@ pub struct ConsentBannerView {
     pub action_event: &'static str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct InterviewViewModel {
     pub layout: LayoutBreakpoint,
     pub top_bar: TopBarView,
