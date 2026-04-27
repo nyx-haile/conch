@@ -94,6 +94,5 @@ Rust dependency tree in `Cargo.lock` lists all transitive attributions.
 
 ## License
 
-TBD — no `LICENSE` file committed yet. Until one is added, treat the source as
-"all rights reserved" for redistribution purposes. Internal use and
-contributions welcome.
+MIT — see [`LICENSE`](LICENSE). Vendored upstream attributions live in
+[`LICENSES/`](LICENSES).

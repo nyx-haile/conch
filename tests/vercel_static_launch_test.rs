@@ -15,8 +15,10 @@ fn vercel_builds_the_app_and_deep_links_into_spa() {
         "Vercel must publish Vite's dist directory at the deployment root"
     );
     for route in [
-        "/app",
-        "/app/signup",
+        "/download",
+        "/cli",
+        "/account",
+        "/account/confirm",
         "/terms.html",
         "/privacy.html",
         "/recording-consent.html",
@@ -32,18 +34,17 @@ fn vercel_builds_the_app_and_deep_links_into_spa() {
         "CSP must allow the built JavaScript bundle while keeping scripts same-origin"
     );
     assert!(
-        config.contains("connect-src 'self' wss://api.deepgram.com wss://agent.deepgram.com"),
-        "CSP must narrowly allow Deepgram WebSocket origins for browser voice"
+        !config.contains("wss://api.deepgram.com") && !config.contains("wss://agent.deepgram.com"),
+        "CSP must not expose Deepgram WebSocket origins now that browser voice is gone"
     );
+
     let config_json = read_json("vercel.json");
-    assert_eq!(
-        header_value_for(&config_json, "/app", "Permissions-Policy"),
-        Some("camera=(), geolocation=(), microphone=(self), payment=()"),
-        "only /app should allow same-origin microphone use after consent"
-    );
     for route in [
         "/",
-        "/app/signup",
+        "/download",
+        "/cli",
+        "/account",
+        "/account/confirm",
         "/terms.html",
         "/privacy.html",
         "/recording-consent.html",
@@ -52,9 +53,10 @@ fn vercel_builds_the_app_and_deep_links_into_spa() {
         assert_eq!(
             header_value_for(&config_json, route, "Permissions-Policy"),
             Some("camera=(), geolocation=(), microphone=(), payment=()"),
-            "{route} should deny microphone access"
+            "{route} must deny microphone access"
         );
     }
+
     for header in [
         "Content-Security-Policy",
         "X-Content-Type-Options",
@@ -67,7 +69,7 @@ fn vercel_builds_the_app_and_deep_links_into_spa() {
 }
 
 #[test]
-fn javascript_app_has_app_first_build_contract() {
+fn javascript_app_has_download_portal_build_contract() {
     let package = read_json("package.json");
     let scripts = package
         .get("scripts")
@@ -87,7 +89,7 @@ fn javascript_app_has_app_first_build_contract() {
     );
     assert!(
         package.pointer("/dependencies/motion").is_none(),
-        "motion dependency must be removed with the animation-heavy launch surface"
+        "motion dependency must stay out of the bundle"
     );
 
     for path in [
@@ -96,29 +98,28 @@ fn javascript_app_has_app_first_build_contract() {
         "src/App.jsx",
         "vite.config.js",
         "src/styles.css",
-        "api/_session.js",
-        "api/_supabase.js",
-        "api/_usage.js",
-        "api/trial-signup.js",
-        "api/trial-confirm.js",
-        "api/deepgram-token.js",
         "public/favicon.svg",
         "public/robots.txt",
-        "public/sitemap.xml",
+        "LICENSE",
     ] {
         assert!(
             repo_path(path).exists(),
-            "missing app asset or serverless helper {path}"
+            "missing required asset {path}"
         );
     }
+
     assert!(
         !repo_path("src/components/BackgroundBeams.jsx").exists(),
-        "BackgroundBeams animation component must be removed"
+        "BackgroundBeams animation component must stay removed"
+    );
+    assert!(
+        !repo_path("public/sitemap.xml").exists(),
+        "public sitemap must stay out of the build until the canonical domain is live"
     );
 }
 
 #[test]
-fn app_first_surface_is_placeholder_free_and_accessible() {
+fn public_surface_is_placeholder_and_pii_free() {
     let mut failures = Vec::new();
 
     for path in [
@@ -128,24 +129,21 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         "vite.config.js",
         "src/styles.css",
         "public/robots.txt",
-        "public/sitemap.xml",
+        "README.md",
     ] {
         let contents = read(path);
         for forbidden in [
             "example.com",
             "status.example.com",
-            "#payments-disabled",
             "nyx@users.noreply.github.com",
+            "[redacted-preview-host]",
+            "[redacted-supabase-ref]",
             "/web/static/",
             "motion/react",
             "BackgroundBeams",
             "Launch brief / Checkout beta",
             "Finite app states",
             "Session checklist",
-            "What happens next",
-            "step-list",
-            "<strong>{state}</strong>",
-            "Session: {trialSession",
             "Request beta access",
             "View prepaid plans",
             "Starter",
@@ -154,6 +152,7 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
             "$29",
             "$199",
             "$499",
+            "$10 of managed usage",
         ] {
             if contents.contains(forbidden) {
                 failures.push(format!("{path}: contains forbidden `{forbidden}`"));
@@ -164,24 +163,13 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
     let app = read("src/App.jsx");
     for required in [
         "conch@theos.sh",
-        "/app",
-        "/app/signup",
-        "Start free",
-        "Open Conch",
-        "BYOK",
-        "usage-based",
-        "Deepgram",
-        "voice_config_missing",
-        "email_confirmation_required",
-        "auth_config_missing",
-        "$10 of managed usage",
-        "$10,000",
-        "No subscription. No automatic charge.",
-        "Ready to talk",
+        "/download",
+        "/account",
         "/terms.html",
         "/privacy.html",
         "/recording-consent.html",
         "/status.html",
+        "cargo install",
     ] {
         assert!(
             app.contains(required),
@@ -189,117 +177,31 @@ fn app_first_surface_is_placeholder_free_and_accessible() {
         );
     }
 
-    for state in [
-        "signup_required",
-        "trial_pending",
-        "voice_config_missing",
-        "email_confirmation_required",
-        "auth_config_missing",
-        "usage_config_missing",
-        "consent_required",
-        "ready_to_talk",
-        "listening",
-        "thinking",
-        "speaking",
-        "ended",
-        "error",
-    ] {
-        assert!(
-            app.contains(state),
-            "app shell missing finite state `{state}`"
-        );
-    }
+    assert!(
+        !app.contains("DEEPGRAM_API_KEY"),
+        "browser app must not reference any server-only key name"
+    );
+    assert!(
+        !app.contains("MediaRecorder")
+            && !app.contains("getUserMedia")
+            && !app.contains("WebSocket"),
+        "browser app must not contain microphone or live audio code"
+    );
+
+    let readme = read("README.md");
+    assert!(
+        !readme.contains("TBD") || !readme.contains("LICENSE"),
+        "README must not advertise a missing LICENSE"
+    );
+    assert!(
+        readme.contains("MIT"),
+        "README must declare the project license"
+    );
 
     assert!(
         failures.is_empty(),
-        "App-first launch app must be root-routable, animation-free, and placeholder-free:\n{}",
+        "Public surface must be placeholder- and PII-free:\n{}",
         failures.join("\n")
-    );
-}
-
-#[test]
-fn deepgram_token_broker_is_server_only_and_no_store() {
-    let broker = read("api/deepgram-token.js");
-    let signup = read("api/trial-signup.js");
-    let session = read("api/_session.js");
-    let usage = read("api/_usage.js");
-    let migration = read("supabase/migrations/20260426190000_conch_trial_usage.sql");
-    let http = read("api/_http.js");
-
-    for required in [
-        "https://api.deepgram.com/v1/auth/grant",
-        "process.env.DEEPGRAM_API_KEY",
-        "verifyTrialSessionToken",
-        "extractBearerToken",
-        "ttl_seconds",
-        "setJsonNoStoreHeaders",
-        "voice_config_missing",
-        "email_confirmation_required",
-        "consent_required",
-        "signup_required",
-        "Authorization",
-        "X-Conch-Session",
-        "max_session_seconds",
-    ] {
-        assert!(
-            broker.contains(required),
-            "token broker missing `{required}`"
-        );
-    }
-
-    assert!(
-        !broker.contains("X-Conch-Trial") && !broker.contains(r#"startsWith("trial_")"#),
-        "token broker must not trust self-attested trial headers or raw trial id shape"
-    );
-    assert!(
-        signup.contains("requestSupabaseEmailConfirmation"),
-        "signup API must use Supabase Auth email confirmation before trial sessions"
-    );
-
-    for required in [
-        "usage_config_missing",
-        "perUserTrialBudgetCents",
-        "globalFreeTrialBudgetCents",
-        "1000",
-        "1000000",
-    ] {
-        assert!(
-            usage.contains(required),
-            "usage helper missing `{required}`"
-        );
-    }
-
-    for required in [
-        "conch_reserve_trial_usage",
-        "usage_limit_reached",
-        "free_trials_closed",
-        "conch_trial_usage_events",
-    ] {
-        assert!(
-            migration.contains(required),
-            "Supabase migration missing `{required}`"
-        );
-    }
-
-    for required in [
-        "createHmac",
-        "timingSafeEqual",
-        "CONCH_SESSION_SIGNING_SECRET",
-        "DEEPGRAM_API_KEY",
-    ] {
-        assert!(
-            session.contains(required),
-            "session signer missing `{required}`"
-        );
-    }
-
-    for required in ["Cache-Control", "no-store", "readJsonBody"] {
-        assert!(http.contains(required), "HTTP helper missing `{required}`");
-    }
-
-    assert!(
-        !read("src/App.jsx").contains("DEEPGRAM_API_KEY"),
-        "browser app must not reference the server-only Deepgram key name"
     );
 }
 

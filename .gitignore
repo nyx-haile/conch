@@ -21,3 +21,9 @@ dist/
 
 # Supabase CLI local state
 supabase/.temp/
+
+# Local task tracker (beads) — kept out of public history
+.beads/
+
+# Internal planning docs — kept out of public history
+specs/

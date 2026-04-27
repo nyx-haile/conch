@@ -4,7 +4,6 @@ const contactEmail = "conch@theos.sh";
 const billingHref = `mailto:${contactEmail}?subject=Conch%20billing`;
 const supportHref = `mailto:${contactEmail}?subject=Conch%20support`;
 const cargoInstall = "cargo install --git https://github.com/nyx-haile/conch";
-const installOneLiner = "curl -LsSf https://conch.theos.sh/install.sh | sh";
 
 const productHighlights = [
   {
@@ -397,17 +396,13 @@ function DownloadPage() {
           <p className="eyebrow">Install from source</p>
           <h2>Or build it <em>yourself</em>.</h2>
           <p>
-            Rust users can install Conch directly from the repo. The one-liner installer detects your platform and drops the binary in <code>~/.local/bin</code>.
+            Rust users can install Conch straight from the repo with one Cargo command.
           </p>
         </div>
         <div className="install-blocks">
           <div className="install-block">
             <p className="install-label">Cargo</p>
             <pre><code>{cargoInstall}</code></pre>
-          </div>
-          <div className="install-block">
-            <p className="install-label">One-liner</p>
-            <pre><code>{installOneLiner}</code></pre>
           </div>
         </div>
       </section>
