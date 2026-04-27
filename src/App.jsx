@@ -1,45 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const contactEmail = "conch@theos.sh";
 const billingHref = `mailto:${contactEmail}?subject=Conch%20billing`;
 const supportHref = `mailto:${contactEmail}?subject=Conch%20support`;
-const cliNotifyHref = `mailto:${contactEmail}?subject=Notify%20me%20when%20Conch%20CLI%20is%20back`;
-const trialStorageKey = "conch_trial_session_v1";
-const consentVersion = "2026-04-26";
-
-const appStatusCopy = {
-  signup_required: "Free trial required",
-  trial_pending: "Opening your trial",
-  email_confirmation_required: "Check your email",
-  auth_config_missing: "Voice unavailable",
-  usage_config_missing: "Voice unavailable",
-  usage_limit_reached: "Trial limit reached",
-  free_trials_closed: "Free trials paused",
-  voice_config_missing: "Voice unavailable",
-  consent_required: "Consent required",
-  ready_to_talk: "Ready to talk",
-  listening: "Listening",
-  thinking: "Thinking",
-  speaking: "Speaking",
-  ended: "Session ended",
-  error: "Needs attention",
-};
+const cargoInstall = "cargo install --git https://github.com/nyx-haile/conch";
+const installOneLiner = "curl -LsSf https://conch.theos.sh/install.sh | sh";
 
 const productHighlights = [
   {
     no: "01",
-    title: "Open and start talking",
-    text: "Confirm your email for a free trial, accept recording consent, and begin a real voice session.",
+    title: "Type a topic, talk it through",
+    text: "Run conch talk \"your topic\" and Conch drives a spoken Q&A, then writes the brief when you're done.",
   },
   {
     no: "02",
-    title: "Real conversation",
-    text: "Conch listens to your voice and turns it into a launch-ready brief. No demo scripts, no fake transcripts.",
+    title: "Three depths",
+    text: "Sketch for fast, talk for default, chronicle for deep. Pick the one that fits the problem.",
   },
   {
     no: "03",
-    title: "No billing theater",
-    text: "No subscription. No automatic charge. You only pay for what you actually use.",
+    title: "Local-first",
+    text: "Local mic, live transcript on screen, written brief saved to your machine on exit.",
   },
 ];
 
@@ -47,12 +28,12 @@ const usageOptions = [
   {
     no: "01",
     title: "Free trial",
-    text: "Confirm your email and Conch opens with a starter trial. No card, no auto-renew.",
+    text: "Confirm your email and Conch issues an API key with a starter balance. No card, no auto-renew.",
   },
   {
     no: "02",
     title: "Bring your own keys",
-    text: "Prefer to route through your own provider account? Conch supports it.",
+    text: "Prefer to route through your own provider account? Set the env vars and Conch uses your accounts directly.",
   },
   {
     no: "03",
@@ -61,14 +42,22 @@ const usageOptions = [
   },
 ];
 
+const downloadTargets = [
+  { no: "01", platform: "macOS · Apple silicon", arch: "aarch64-apple-darwin" },
+  { no: "02", platform: "macOS · Intel", arch: "x86_64-apple-darwin" },
+  { no: "03", platform: "Linux · x86_64", arch: "x86_64-unknown-linux-gnu" },
+  { no: "04", platform: "Linux · aarch64", arch: "aarch64-unknown-linux-gnu" },
+  { no: "05", platform: "Windows · x86_64", arch: "x86_64-pc-windows-msvc" },
+];
+
 const legalPages = {
   "/terms.html": {
     title: "Terms of Service",
-    eyebrow: "Version 2026-04-26",
+    eyebrow: "Version 2026-04-27",
     sections: [
       [
         "Beta status",
-        "Conch is an early beta voice-discovery app. The web app requires email confirmation before a trial session. Long-term storage and exports are coming soon.",
+        "Conch is an early-beta voice-interview CLI. Email confirmation is required to receive an API key when the managed tier opens; long-term storage and exports are coming soon.",
       ],
       [
         "Payments",
@@ -76,7 +65,7 @@ const legalPages = {
       ],
       [
         "Recording responsibilities",
-        "You are responsible for obtaining every consent required by law before recording or transcribing anyone. Do not use Conch for unlawful surveillance, biometric identification, children under 13, or regulated workflows without written approval.",
+        "You are responsible for obtaining every consent required by law before recording or transcribing anyone with the Conch CLI. Do not use Conch for unlawful surveillance, biometric identification, children under 13, or regulated workflows without written approval.",
       ],
       [
         "Data rights",
@@ -86,7 +75,7 @@ const legalPages = {
   },
   "/privacy.html": {
     title: "Privacy Policy",
-    eyebrow: "Version 2026-04-26",
+    eyebrow: "Version 2026-04-27",
     sections: [
       [
         "What Conch needs",
@@ -94,11 +83,11 @@ const legalPages = {
       ],
       [
         "Processors",
-        "Deepgram may process audio for speech-to-text and voice features. Payment processors may process billing metadata only when a paid workflow is in use.",
+        "Deepgram may process audio for speech-to-text and voice features when you use the Conch CLI in managed mode. Payment processors may process billing metadata only when a paid workflow is in use.",
       ],
       [
-        "This public app",
-        "This app requests microphone access only after you accept the recording-consent gate and a voice session is available.",
+        "This site",
+        "This site is a download portal and account page. It does not request microphone access. The Conch CLI requests microphone access on your own machine only when you start a voice session there.",
       ],
       [
         "Contact",
@@ -108,18 +97,18 @@ const legalPages = {
   },
   "/recording-consent.html": {
     title: "Recording Consent Notice",
-    eyebrow: "Version 2026-04-26",
+    eyebrow: "Version 2026-04-27",
     sections: [
       [
         "Before recording",
-        "Conch records and transcribes audio only when you start a voice run in the app. Recording laws vary by location. Some places require consent from every participant.",
+        "The Conch CLI records and transcribes audio only when you start a voice session on your own machine. Recording laws vary by location. Some places require consent from every participant.",
       ],
       [
         "Your confirmation",
-        "By starting a voice run, you confirm that you have the right to record and transcribe the conversation and that every required participant has consented.",
+        "By starting a voice session, you confirm that you have the right to record and transcribe the conversation and that every required participant has consented.",
       ],
       [
-        "In-app consent label",
+        "In-CLI consent prompt",
         "I have recording consent — start voice session.",
       ],
       [
@@ -187,6 +176,39 @@ function ConchSpiral() {
   );
 }
 
+function TerminalFrame() {
+  return (
+    <aside className="terminal-frame" aria-label="Conch terminal preview">
+      <div className="terminal-bar">
+        <span className="terminal-dot" data-tone="rest" />
+        <span className="terminal-dot" data-tone="warn" />
+        <span className="terminal-dot" data-tone="go" />
+        <span className="terminal-title">conch</span>
+      </div>
+      <pre className="terminal-screen">
+        <span className="terminal-line">
+          <span className="terminal-prompt">~ ❯</span> conch talk{" "}
+          <span className="terminal-arg">"voice discovery, briefly"</span>
+        </span>
+        <span className="terminal-line terminal-meta">
+          <span className="terminal-mark">✣</span> Conch · listening
+        </span>
+        <span className="terminal-line terminal-wave">▁ ▂ ▃ ▄ ▅ ▆ ▇ █ ▇ ▆ ▅ ▄ ▃ ▂</span>
+        <span className="terminal-line terminal-dialogue">
+          &gt;{" "}
+          <span className="terminal-italic">
+            Who's the brief for, and what should they walk away knowing?
+          </span>
+        </span>
+        <span className="terminal-line terminal-cursor">
+          <span className="terminal-prompt">~ ❯</span>{" "}
+          <span className="terminal-blink">▌</span>
+        </span>
+      </pre>
+    </aside>
+  );
+}
+
 function App() {
   const path = normalizePath(window.location.pathname);
   const page = legalPages[path];
@@ -199,20 +221,16 @@ function App() {
     return <Shell><StatusPage /></Shell>;
   }
 
-  if (path === "/cli") {
-    return <Shell active="cli"><CliComingSoon /></Shell>;
+  if (path === "/download" || path === "/cli") {
+    return <Shell active="download"><DownloadPage /></Shell>;
   }
 
-  if (path === "/app/signup") {
-    return <Shell active="signup"><SignupPage /></Shell>;
+  if (path === "/account") {
+    return <Shell active="account"><AccountPage /></Shell>;
   }
 
-  if (path === "/app/confirm") {
-    return <Shell active="signup"><ConfirmPage /></Shell>;
-  }
-
-  if (path === "/app") {
-    return <Shell active="app"><AppWorkspace /></Shell>;
+  if (path === "/account/confirm") {
+    return <Shell active="account"><AccountConfirmPage /></Shell>;
   }
 
   if (path !== "/") {
@@ -231,9 +249,8 @@ function Shell({ active = "home", children }) {
           <span>✣ Conch</span>
         </a>
         <nav aria-label="Primary navigation">
-          <a className={active === "app" ? "active" : ""} href="/app">Open app</a>
-          <a className={active === "signup" ? "active" : ""} href="/app/signup">Start free</a>
-          <a className={active === "cli" ? "active" : ""} href="/cli">Terminal</a>
+          <a className={active === "download" ? "active" : ""} href="/download">Download</a>
+          <a className={active === "account" ? "active" : ""} href="/account">Account</a>
           <a href="/#usage">Usage</a>
           <a href="/recording-consent.html">Consent</a>
           <a href="/privacy.html">Privacy</a>
@@ -242,7 +259,8 @@ function Shell({ active = "home", children }) {
       {children}
       <footer className="site-footer">
         <span>© 2026 Conch — voice discovery, briefly.</span>
-        <a href="/cli">Terminal</a>
+        <a href="/download">Download</a>
+        <a href="/account">Account</a>
         <a href="/terms.html">Terms</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/recording-consent.html">Consent</a>
@@ -260,34 +278,34 @@ function HomePage() {
       <section className="hero-section section-frame">
         <div className="hero-copy">
           <p className="eyebrow">Voice discovery, for builders</p>
-          <h1>Open Conch and <em>start talking.</em></h1>
+          <h1>Type a topic and <em>start talking.</em></h1>
           <p className="hero-lede">
-            Conch turns a live voice conversation into a product brief. Confirm your email for a free trial,
-            accept recording consent, and start talking.
+            Conch is a voice-interview CLI. Install the binary, paste your API key, run{" "}
+            <code>conch talk</code> and Conch turns a spoken conversation into a launch-ready brief.
           </p>
           <div className="hero-actions">
-            <a className="button button-primary" href="/app/signup">Start free</a>
-            <a className="button button-secondary" href="/app">Open Conch</a>
+            <a className="button button-primary" href="/download">Download</a>
+            <a className="button button-secondary" href="/account">Get API key</a>
           </div>
           <p className="trust-note">
             Bring your own keys, or pay as you talk. No subscription. No automatic charge.
           </p>
         </div>
 
-        <aside className="app-preview" aria-label="Conch app access path">
+        <aside className="app-preview" aria-label="Conch install path">
           <div className="preview-illustration">
             <ConchSpiral />
           </div>
           <div className="preview-topline">
-            <span>App path</span>
-            <span>Voice-ready</span>
+            <span>Install path</span>
+            <span>CLI-ready</span>
           </div>
           <ol className="path-list">
-            <li><strong>i</strong><span>Sign up for the free trial.</span></li>
-            <li><strong>ii</strong><span>Accept recording consent.</span></li>
-            <li><strong>iii</strong><span>Start a real voice session — no fake transcript.</span></li>
+            <li><strong>i</strong><span>Download Conch for your platform.</span></li>
+            <li><strong>ii</strong><span>Confirm your email to claim an API key.</span></li>
+            <li><strong>iii</strong><span>Run <code>conch talk "topic"</code> and start talking.</span></li>
           </ol>
-          <a className="button button-primary full-width" href="/app">Go to app</a>
+          <a className="button button-primary full-width" href="/download">Get Conch</a>
         </aside>
       </section>
 
@@ -306,7 +324,7 @@ function HomePage() {
           <p className="eyebrow">How it bills</p>
           <h2>No public price <em>theater</em>.</h2>
           <p>
-            The first product job is access: open the app, confirm a free trial, and talk. Free trials open with a starter balance — past that, you pay only for what you use.
+            The first product job is access: download the binary, claim a free trial, and talk. Free trials open with a starter balance — past that, you pay only for what you use.
           </p>
         </div>
         <div className="usage-grid">
@@ -325,18 +343,90 @@ function HomePage() {
       <section className="cta-strip">
         <div>
           <p className="eyebrow">Ready now</p>
-          <h2>The app is the <em>front door</em>.</h2>
+          <h2>Conch lives in your <em>terminal</em>.</h2>
         </div>
         <div className="hero-actions">
-          <a className="button button-primary" href="/app/signup">Start free</a>
-          <a className="button button-secondary" href="/app">Open Conch</a>
+          <a className="button button-primary" href="/download">Download</a>
+          <a className="button button-secondary" href="/account">Get API key</a>
         </div>
       </section>
     </main>
   );
 }
 
-function SignupPage() {
+function DownloadPage() {
+  return (
+    <main className="cli-page">
+      <section className="cli-hero section-frame">
+        <div className="cli-copy">
+          <p className="eyebrow">Download · Conch CLI</p>
+          <h1>Conch in your <em>terminal</em>.</h1>
+          <p className="cli-lede">
+            One binary. Type a topic, talk it through, walk away with a written brief. Pick your platform below — signed builds land with the next release.
+          </p>
+          <div className="hero-actions">
+            <a className="button button-primary" href="/account">Get API key</a>
+            <a className="button button-secondary" href="#install">Install from source</a>
+          </div>
+        </div>
+        <TerminalFrame />
+      </section>
+
+      <section className="download-section">
+        <div className="download-heading">
+          <p className="eyebrow">Binaries</p>
+          <h2>Pick your platform.</h2>
+          <p>
+            Builds for the major desktops are landing in the next release. Drop your email on the Account page and we'll ping you the moment they're up.
+          </p>
+        </div>
+        <ol className="download-table" aria-label="Conch platform binaries">
+          {downloadTargets.map((target) => (
+            <li key={target.arch} className="download-row">
+              <span className="download-no">{target.no}</span>
+              <span className="download-platform">{target.platform}</span>
+              <span className="download-arch">{target.arch}</span>
+              <span className="download-state">Soon</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className="install-section" id="install">
+        <div className="install-heading">
+          <p className="eyebrow">Install from source</p>
+          <h2>Or build it <em>yourself</em>.</h2>
+          <p>
+            Rust users can install Conch directly from the repo. The one-liner installer detects your platform and drops the binary in <code>~/.local/bin</code>.
+          </p>
+        </div>
+        <div className="install-blocks">
+          <div className="install-block">
+            <p className="install-label">Cargo</p>
+            <pre><code>{cargoInstall}</code></pre>
+          </div>
+          <div className="install-block">
+            <p className="install-label">One-liner</p>
+            <pre><code>{installOneLiner}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <section className="cli-callout">
+        <div>
+          <p className="eyebrow">Then</p>
+          <h2>Paste your <em>key</em> and talk.</h2>
+          <p>Set <code>CONCH_API_KEY</code> or run <code>conch login</code>, and you're in.</p>
+        </div>
+        <div className="hero-actions">
+          <a className="button button-primary" href="/account">Get API key</a>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AccountPage() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
@@ -344,7 +434,7 @@ function SignupPage() {
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setStatus("trial_pending");
+    setStatus("pending");
     setMessage("");
     setError("");
 
@@ -356,28 +446,28 @@ function SignupPage() {
       });
       const payload = await safeJson(response);
       if (!response.ok || payload.state !== "email_confirmation_required") {
-        throw new Error(payload.message || "Could not start the free trial.");
+        throw new Error(payload.message || "Could not start your account.");
       }
-      setStatus("email_confirmation_required");
-      setMessage(payload.message || "Check your email to confirm this free trial.");
+      setStatus("sent");
+      setMessage(payload.message || "Check your email to confirm your account.");
     } catch (err) {
       setStatus("error");
-      setError(err instanceof Error ? err.message : "Could not start the free trial.");
+      setError(err instanceof Error ? err.message : "Could not start your account.");
     }
   }
 
   return (
     <main className="app-page">
       <section className="signup-panel">
-        <p className="eyebrow">Free trial</p>
-        <h1>Sign up, then <em>start talking</em>.</h1>
+        <p className="eyebrow">Account</p>
+        <h1>Get your <em>API key</em>.</h1>
         <p>
-          We'll email you a confirmation link. Click it and Conch opens with your trial session ready.
+          Confirm your email and Conch will issue a key when the managed tier opens. No card. No auto-renew.
         </p>
         <form className="signup-form" onSubmit={handleSubmit}>
-          <label htmlFor="trial-email">Work email</label>
+          <label htmlFor="account-email">Email</label>
           <input
-            id="trial-email"
+            id="account-email"
             name="email"
             type="email"
             autoComplete="email"
@@ -386,23 +476,22 @@ function SignupPage() {
             onChange={(event) => setEmail(event.target.value)}
             required
           />
-          <button className="button button-primary" type="submit" disabled={status === "trial_pending"}>
-            {status === "trial_pending" ? "Sending confirmation…" : "Start free"}
+          <button className="button button-primary" type="submit" disabled={status === "pending"}>
+            {status === "pending" ? "Sending confirmation…" : "Email me a link"}
           </button>
           {message && <p className="success-text">{message}</p>}
           {error && <p className="error-text">{error}</p>}
         </form>
         <p className="fine-print">
-          No card required. Free trials open with a starter balance — talk until it's used.
+          We email a one-time confirmation link. After you click it, your API key (or a notice when keys ship) lands at this address.
         </p>
       </section>
     </main>
   );
 }
 
-
-function ConfirmPage() {
-  const [status, setStatus] = useState("trial_pending");
+function AccountConfirmPage() {
+  const [status, setStatus] = useState("pending");
   const [message, setMessage] = useState("Confirming your email…");
 
   useEffect(() => {
@@ -413,8 +502,8 @@ function ConfirmPage() {
     const type = query.get("type") || hash.get("type") || "email";
 
     if (!accessToken && !tokenHash) {
-      setStatus("email_confirmation_required");
-      setMessage("This confirmation link is missing or expired. Start the free trial again.");
+      setStatus("error");
+      setMessage("This confirmation link is missing or expired. Start the account flow again.");
       return;
     }
 
@@ -426,412 +515,38 @@ function ConfirmPage() {
           body: JSON.stringify({ accessToken, tokenHash, type }),
         });
         const payload = await safeJson(response);
-        if (!response.ok || !payload.sessionToken) {
-          throw new Error(payload.message || "Could not confirm this trial.");
+        if (!response.ok || !payload.email) {
+          throw new Error(payload.message || "Could not confirm your account.");
         }
-        saveTrialSession({
-          id: payload.sessionId,
-          email: payload.email,
-          emailConfirmed: payload.emailConfirmed,
-          createdAt: new Date().toISOString(),
-          expiresAt: payload.expiresAt,
-          trial: payload.trial,
-          trialBudgetCents: payload.trialBudgetCents,
-          globalFreeTrialBudgetCents: payload.globalFreeTrialBudgetCents,
-          sessionToken: payload.sessionToken,
-        });
-        setStatus("consent_required");
-        setMessage("Email confirmed. Opening Conch…");
-        window.setTimeout(() => window.location.assign("/app"), 500);
+        setStatus("confirmed");
+        setMessage(`You're confirmed as ${payload.email}. We'll email your API key the moment the managed tier opens.`);
       } catch (err) {
         setStatus("error");
-        setMessage(err instanceof Error ? err.message : "Could not confirm this trial.");
+        setMessage(err instanceof Error ? err.message : "Could not confirm your account.");
       }
     }
 
     confirmEmail();
   }, []);
 
+  const heading = status === "confirmed"
+    ? "You're in."
+    : status === "error"
+      ? "We hit a snag."
+      : "Confirming…";
+
   return (
     <main className="app-page">
       <section className="signup-panel">
-        <p className="eyebrow">Email confirmation</p>
-        <h1>{appStatusCopy[status] || "Confirming"}</h1>
+        <p className="eyebrow">Account confirmation</p>
+        <h1>{heading}</h1>
         <p>{message}</p>
-        {status === "error" && <a className="button button-primary" href="/app/signup">Start again</a>}
-      </section>
-    </main>
-  );
-}
-
-function AppWorkspace() {
-  const [trialSession, setTrialSession] = useState(null);
-  const [recordingConsentAccepted, setRecordingConsentAccepted] = useState(false);
-  const [state, setState] = useState("signup_required");
-  const [statusText, setStatusText] = useState("Sign up for a free trial to open the voice workspace.");
-  const [turns, setTurns] = useState([]);
-  const [interimText, setInterimText] = useState("");
-  const [error, setError] = useState("");
-  const mediaStreamRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const websocketRef = useRef(null);
-  const sessionTimerRef = useRef(null);
-
-  useEffect(() => {
-    const session = loadTrialSession();
-    setTrialSession(session);
-    if (session) {
-      setState("consent_required");
-      setStatusText("Free trial active. Accept recording consent before starting voice.");
-    }
-  }, []);
-
-  useEffect(() => () => closeVoiceResources(), []);
-
-  const canStart = trialSession && recordingConsentAccepted && state !== "listening" && state !== "thinking" && state !== "speaking";
-
-  function acceptRecordingConsent() {
-    if (!trialSession) {
-      setState("signup_required");
-      setStatusText("Sign up before accepting recording consent.");
-      return;
-    }
-    setRecordingConsentAccepted(true);
-    setState("ready_to_talk");
-    setStatusText("Recording consent accepted. Start voice when ready.");
-  }
-
-  async function beginVoiceRun() {
-    setError("");
-
-    if (!trialSession?.sessionToken) {
-      setState("signup_required");
-      setStatusText("Sign up for the free trial before starting voice.");
-      return;
-    }
-
-    if (!recordingConsentAccepted) {
-      setState("consent_required");
-      setStatusText("Recording consent is required before we can listen.");
-      return;
-    }
-
-    try {
-      setState("thinking");
-      setStatusText("Preparing your voice session…");
-      const tokenResponse = await fetch("/api/deepgram-token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${trialSession.sessionToken}`,
-          "X-Conch-Session": trialSession.id,
-        },
-        body: JSON.stringify({
-          sessionId: trialSession.id,
-          consentVersion,
-          requestedAt: new Date().toISOString(),
-        }),
-      });
-      const tokenPayload = await safeJson(tokenResponse);
-
-      if (!tokenResponse.ok && tokenPayload.state && appStatusCopy[tokenPayload.state]) {
-        setState(tokenPayload.state);
-        setStatusText(tokenPayload.message || "Voice is not available yet.");
-        return;
-      }
-
-      if (!tokenResponse.ok || !tokenPayload.access_token) {
-        throw new Error(tokenPayload.message || "Could not start the voice session.");
-      }
-
-      setStatusText("Opening your microphone…");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      });
-      mediaStreamRef.current = stream;
-
-      const websocket = new WebSocket(deepgramListenUrl(), ["bearer", tokenPayload.access_token]);
-      websocketRef.current = websocket;
-
-      websocket.onopen = () => {
-        const recorder = createMediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-        recorder.ondataavailable = (event) => {
-          if (event.data.size > 0 && websocket.readyState === WebSocket.OPEN) {
-            websocket.send(event.data);
-          }
-        };
-        recorder.start(250);
-        const maxSessionMs = Math.max(30, Number(tokenPayload.max_session_seconds || 600)) * 1000;
-        sessionTimerRef.current = window.setTimeout(() => {
-          stopVoiceRun("ended", "Trial session ended. Start another if you'd like to keep talking.");
-        }, maxSessionMs);
-        setState("listening");
-        setStatusText("Listening. Speak naturally; stop when done.");
-      };
-
-      websocket.onmessage = (event) => handleDeepgramMessage(event.data);
-      websocket.onerror = () => {
-        setError("The voice connection dropped. Stop and try again.");
-        stopVoiceRun("error", "The voice connection dropped. Stop and try again.");
-      };
-      websocket.onclose = () => {
-        stopLocalMedia();
-        setState((current) => current === "error" ? "error" : "ended");
-        setStatusText("Voice stream ended.");
-      };
-    } catch (err) {
-      stopVoiceRun("error", "Voice could not start.");
-      setError(err instanceof Error ? err.message : "Voice could not start.");
-    }
-  }
-
-  function handleDeepgramMessage(rawData) {
-    const message = parseJson(rawData);
-    if (!message) return;
-
-    if (message.type === "SpeechStarted") {
-      setState("listening");
-      setStatusText("Speech detected.");
-      return;
-    }
-
-    if (message.type === "Results") {
-      const transcript = message.channel?.alternatives?.[0]?.transcript?.trim();
-      if (!transcript) return;
-
-      if (message.is_final || message.speech_final) {
-        setInterimText("");
-        setTurns((current) => [
-          ...current,
-          {
-            id: `${Date.now()}-${current.length}`,
-            speaker: "You",
-            text: transcript,
-          },
-        ]);
-        setState("thinking");
-        setStatusText("Captured. Conch is thinking…");
-      } else {
-        setInterimText(transcript);
-        setState("listening");
-      }
-    }
-  }
-
-  function stopLocalMedia() {
-    const stream = mediaStreamRef.current;
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-    mediaStreamRef.current = null;
-  }
-
-  function closeVoiceResources() {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop();
-    }
-    mediaRecorderRef.current = null;
-
-    if (sessionTimerRef.current) {
-      window.clearTimeout(sessionTimerRef.current);
-      sessionTimerRef.current = null;
-    }
-
-    const websocket = websocketRef.current;
-    if (websocket && websocket.readyState === WebSocket.OPEN) {
-      websocket.send(JSON.stringify({ type: "CloseStream" }));
-      websocket.close();
-    } else if (websocket && websocket.readyState === WebSocket.CONNECTING) {
-      websocket.close();
-    }
-    websocketRef.current = null;
-
-    stopLocalMedia();
-  }
-
-  function stopVoiceRun(nextState = "ended", nextStatus = "Voice stream stopped.") {
-    closeVoiceResources();
-    setState(nextState);
-    setStatusText(nextStatus);
-  }
-
-  function resetTrial() {
-    window.localStorage.removeItem(trialStorageKey);
-    setTrialSession(null);
-    setRecordingConsentAccepted(false);
-    setTurns([]);
-    setInterimText("");
-    stopVoiceRun("signup_required", "Sign up for a free trial to open the voice workspace.");
-  }
-
-  return (
-    <main className="workspace-layout">
-      <section className="workspace-main" aria-label="Conch voice workspace">
-        <div className="workspace-heading">
-          <p className="eyebrow">Voice studio</p>
-          <h1>Talk to <em>Conch</em>.</h1>
-          <p>
-            This is the real app — no sample transcripts, no canned briefs. Conch waits for your signup and consent, then starts listening.
-          </p>
-        </div>
-
-        <div className="status-banner" data-state={state} role="status" aria-live="polite">
-          <strong>{appStatusCopy[state] || "App status"}</strong>
-          <span>{statusText}</span>
-        </div>
-
-        {!trialSession ? (
-          <div className="empty-state">
-            <h2>Free trial required</h2>
-            <p>Open the app by creating a free trial session first.</p>
-            <a className="button button-primary" href="/app/signup">Start free</a>
-          </div>
-        ) : (
-          <>
-            <section className="consent-panel" aria-label="Recording consent">
-              <div>
-                <h2>Recording consent</h2>
-                <p>
-                  Confirm you have permission from every participant before recording begins.
-                </p>
-              </div>
-              <button
-                className="button button-secondary"
-                type="button"
-                onClick={acceptRecordingConsent}
-                aria-pressed={recordingConsentAccepted}
-              >
-                {recordingConsentAccepted ? "Consent accepted" : "I have recording consent"}
-              </button>
-            </section>
-
-            <section className="control-row" aria-label="Voice controls">
-              <button className="button button-primary" type="button" onClick={beginVoiceRun} disabled={!canStart}>
-                Start voice
-              </button>
-              <button className="button button-secondary" type="button" onClick={() => stopVoiceRun()}>
-                Stop
-              </button>
-              <button className="button button-ghost" type="button" onClick={resetTrial}>
-                Reset trial
-              </button>
-            </section>
-
-            {error && <p className="error-text">{error}</p>}
-
-            <section className="session-grid" aria-label="Conch session regions">
-              <article className="session-card transcript-card">
-                <div className="card-label"><span>Transcript</span><span>Live</span></div>
-                <p className="speaker-legend"><span>● You</span><span>✣ Conch</span></p>
-                {turns.length === 0 && !interimText ? (
-                  <p>No transcript yet. Start voice after consent to capture real audio.</p>
-                ) : (
-                  <div className="turn-list">
-                    {turns.map((turn) => (
-                      <p key={turn.id}><strong>{turn.speaker}</strong>{turn.text}</p>
-                    ))}
-                    {interimText && <p className="interim"><strong>You · interim</strong>{interimText}</p>}
-                  </div>
-                )}
-              </article>
-              <article className="session-card">
-                <div className="card-label"><span>Brief</span><span>Pending</span></div>
-                <p>Your brief will appear here once the session wraps.</p>
-              </article>
-              <article className="session-card">
-                <div className="card-label"><span>Status</span><span>Studio</span></div>
-                <p>{statusText}</p>
-                <p style={{ fontFamily: "var(--font-mono)", fontSize: "0.78rem", color: "var(--ink-soft)", letterSpacing: "0.04em" }}>
-                  Hold Space — talk · Tap Space — toggle mic · Esc — interrupt
-                </p>
-                <span className="sr-only">Voice modes: Listening, Thinking, Speaking, Closing.</span>
-                <p className="waveform" aria-label="Waveform placeholder">▁ ▂ ▃ ▄ ▅ ▆ ▇ █</p>
-              </article>
-            </section>
-          </>
+        {status === "error" && (
+          <a className="button button-primary" href="/account">Start again</a>
         )}
-      </section>
-
-    </main>
-  );
-}
-
-function CliComingSoon() {
-  return (
-    <main className="cli-page">
-      <section className="cli-hero section-frame">
-        <div className="cli-copy">
-          <p className="eyebrow">Terminal · Coming back soon</p>
-          <h1>Conch in your <em>terminal</em>.</h1>
-          <p className="cli-lede">
-            The original Conch was a single command. Type a topic, talk it through, walk away with a written brief. We're polishing it for re-release — leave your email and we'll ping you when it lands.
-          </p>
-          <div className="hero-actions">
-            <a className="button button-primary" href={cliNotifyHref}>Notify me</a>
-            <a className="button button-secondary" href="/app">Open the web app</a>
-          </div>
-        </div>
-
-        <aside className="terminal-frame" aria-label="Conch terminal preview">
-          <div className="terminal-bar">
-            <span className="terminal-dot" data-tone="rest" />
-            <span className="terminal-dot" data-tone="warn" />
-            <span className="terminal-dot" data-tone="go" />
-            <span className="terminal-title">conch</span>
-          </div>
-          <pre className="terminal-screen">
-            <span className="terminal-line">
-              <span className="terminal-prompt">~ ❯</span> conch talk <span className="terminal-arg">"voice discovery, briefly"</span>
-            </span>
-            <span className="terminal-line terminal-meta">
-              <span className="terminal-mark">✣</span> Conch · listening
-            </span>
-            <span className="terminal-line terminal-wave">▁ ▂ ▃ ▄ ▅ ▆ ▇ █ ▇ ▆ ▅ ▄ ▃ ▂</span>
-            <span className="terminal-line terminal-dialogue">
-              &gt; <span className="terminal-italic">Who's the brief for, and what should they walk away knowing?</span>
-            </span>
-            <span className="terminal-line terminal-cursor">
-              <span className="terminal-prompt">~ ❯</span> <span className="terminal-blink">▌</span>
-            </span>
-          </pre>
-        </aside>
-      </section>
-
-      <section className="cli-features">
-        <article className="cli-feature">
-          <span className="specimen-no">№ 01</span>
-          <h2>One command, one brief.</h2>
-          <p>Type a topic. Conch runs the spoken Q&amp;A and writes the brief when you're done.</p>
-        </article>
-        <article className="cli-feature">
-          <span className="specimen-no">№ 02</span>
-          <h2>Three depths.</h2>
-          <p>Sketch for fast, talk for default, chronicle for deep. Pick the one that fits the problem.</p>
-        </article>
-        <article className="cli-feature">
-          <span className="specimen-no">№ 03</span>
-          <h2>Local-first.</h2>
-          <p>Local mic, live transcript on screen, written brief saved to your machine on exit.</p>
-        </article>
-      </section>
-
-      <section className="cli-callout">
-        <div>
-          <p className="eyebrow">In the meantime</p>
-          <h2>The web app is <em>open</em>.</h2>
-          <p>Same voice discovery, same launch-ready brief. No install required.</p>
-        </div>
-        <div className="hero-actions">
-          <a className="button button-primary" href="/app/signup">Start free</a>
-          <a className="button button-secondary" href="/app">Open Conch</a>
-        </div>
+        {status === "confirmed" && (
+          <a className="button button-primary" href="/download">Download Conch</a>
+        )}
       </section>
     </main>
   );
@@ -861,11 +576,11 @@ function StatusPage() {
       <p className="eyebrow">Status</p>
       <h1>Conch is <em>online</em>.</h1>
       <p>
-        All systems up. If voice doesn't open right away, give it a moment and try again.
+        Site is up. Binary builds and managed-tier API keys are landing with the next release — drop your email on the Account page to get pinged.
       </p>
       <div className="hero-actions">
-        <a className="button button-primary" href="/app">Open Conch</a>
-        <a className="button button-secondary" href="/app/signup">Start free</a>
+        <a className="button button-primary" href="/download">Download</a>
+        <a className="button button-secondary" href="/account">Get API key</a>
       </div>
     </main>
   );
@@ -877,7 +592,7 @@ function NotFound() {
       <p className="eyebrow">404</p>
       <h1>That page <em>drifted out to sea</em>.</h1>
       <p>Head back to Conch or contact {contactEmail} if you expected something here.</p>
-      <a className="button button-primary" href="/app">Open Conch</a>
+      <a className="button button-primary" href="/download">Download Conch</a>
     </main>
   );
 }
@@ -887,27 +602,6 @@ function normalizePath(pathname) {
   return pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
 }
 
-function loadTrialSession() {
-  try {
-    const raw = window.localStorage.getItem(trialStorageKey);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveTrialSession(session) {
-  window.localStorage.setItem(trialStorageKey, JSON.stringify(session));
-}
-
-function parseJson(rawData) {
-  try {
-    return JSON.parse(rawData);
-  } catch {
-    return null;
-  }
-}
-
 async function safeJson(response) {
   try {
     return await response.json();
@@ -915,28 +609,5 @@ async function safeJson(response) {
     return {};
   }
 }
-
-function deepgramListenUrl() {
-  const params = new URLSearchParams({
-    model: "nova-3",
-    smart_format: "true",
-    interim_results: "true",
-    endpointing: "200",
-    utterance_end_ms: "1000",
-    vad_events: "true",
-  });
-  return `wss://api.deepgram.com/v1/listen?${params.toString()}`;
-}
-
-function createMediaRecorder(stream) {
-  const preferredTypes = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/ogg;codecs=opus",
-  ];
-  const mimeType = preferredTypes.find((type) => window.MediaRecorder?.isTypeSupported(type));
-  return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-}
-
 
 export default App;

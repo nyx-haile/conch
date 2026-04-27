@@ -4,15 +4,19 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/app",
+      "source": "/download",
       "destination": "/"
     },
     {
-      "source": "/app/signup",
+      "source": "/cli",
       "destination": "/"
     },
     {
-      "source": "/app/confirm",
+      "source": "/account",
+      "destination": "/"
+    },
+    {
+      "source": "/account/confirm",
       "destination": "/"
     },
     {
@@ -30,10 +34,6 @@
     {
       "source": "/status.html",
       "destination": "/"
-    },
-    {
-      "source": "/cli",
-      "destination": "/"
     }
   ],
   "headers": [
@@ -42,7 +42,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://api.deepgram.com wss://agent.deepgram.com; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'; upgrade-insecure-requests"
         },
         {
           "key": "X-Content-Type-Options",
@@ -63,15 +63,6 @@
       ]
     },
     {
-      "source": "/app",
-      "headers": [
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), geolocation=(), microphone=(self), payment=()"
-        }
-      ]
-    },
-    {
       "source": "/",
       "headers": [
         {
@@ -81,7 +72,7 @@
       ]
     },
     {
-      "source": "/app/confirm",
+      "source": "/download",
       "headers": [
         {
           "key": "Permissions-Policy",
@@ -90,7 +81,25 @@
       ]
     },
     {
-      "source": "/app/signup",
+      "source": "/cli",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/account",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), geolocation=(), microphone=(), payment=()"
+        }
+      ]
+    },
+    {
+      "source": "/account/confirm",
       "headers": [
         {
           "key": "Permissions-Policy",
@@ -127,15 +136,6 @@
     },
     {
       "source": "/status.html",
-      "headers": [
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), geolocation=(), microphone=(), payment=()"
-        }
-      ]
-    },
-    {
-      "source": "/cli",
       "headers": [
         {
           "key": "Permissions-Policy",
