@@ -82,7 +82,7 @@ impl Config {
             deepgram_tts_model: None,
             github_token: None,
             provider: None,
-            stt_backend: SttBackend::Deepgram,
+            stt_backend: SttBackend::Local,
             tts_backend: TtsBackend::Local,
         }
     }
@@ -189,7 +189,7 @@ impl Config {
         };
         let stt_backend = match env.get("CONCH_STT") {
             Some(v) => v.parse()?,
-            None => SttBackend::Deepgram,
+            None => SttBackend::Local,
         };
         let tts_backend = match env.get("CONCH_TTS") {
             Some(v) => v.parse()?,

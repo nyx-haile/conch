@@ -54,8 +54,12 @@ Environment (see `.env.example`):
 - `OPENAI_API_KEY_FILE` — optional file path containing only the OpenAI key (supports `~/...`)
 - `OPENROUTER_API_KEY` — OpenRouter launch gateway (`CONCH_PROVIDER=openrouter` or `grok`) and routed DeepSeek / Llama / Gemini
 - `CONCH_OUTPUT_DEVICE` — optional substring match for the live playback device/driver (e.g. `pulse`, `pipewire`, `hdmi`)
+- `CONCH_INPUT_DEVICE` — optional substring match for the live mic input device (e.g. `mic`, `headset`, `digital`)
 - `DEEPGRAM_API_KEY` — streaming STT
+- `CONCH_STT` — STT backend: `local` (default) or `deepgram`
 - `ELEVENLABS_API_KEY` — premium TTS
+- `CONCH_PIPER_BIN` — local Piper executable override (default `piper-tts`)
+- `CONCH_PIPER_MODEL` — local Piper `.onnx` voice path; sibling `.onnx.json` must exist
 
 
 ### OpenRouter model gateway
