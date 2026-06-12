@@ -1,5 +1,6 @@
 use crate::audio::wav::WavSessionWriter;
 use anyhow::{anyhow, Context, Result};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
@@ -8,7 +9,15 @@ use std::sync::{Arc, Mutex};
 
 pub trait AudioSink: Send {
     fn push(&mut self, pcm: Vec<i16>, sample_rate: u32) -> Result<()>;
+    fn drain(&mut self) -> Result<DrainWait> {
+        Ok(DrainWait::Complete)
+    }
     fn stop(&mut self);
+}
+
+pub enum DrainWait {
+    Complete,
+    Pending(Receiver<()>),
 }
 
 // ---------------------------------------------------------------------------
@@ -114,6 +123,10 @@ impl AudioSink for RecordingSink {
     fn stop(&mut self) {
         self.inner.stop();
     }
+
+    fn drain(&mut self) -> Result<DrainWait> {
+        self.inner.drain()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +175,7 @@ use std::num::NonZero;
 
 enum RodioCmd {
     Push { pcm: Vec<i16>, sample_rate: u32 },
+    Drain { done: std::sync::mpsc::Sender<()> },
     Stop,
     Shutdown,
 }
@@ -221,6 +235,7 @@ impl RodioSink {
 
             let player = Player::connect_new(sink_device.mixer());
             player.play();
+            let mut pending_drains: Vec<std::sync::mpsc::Sender<()>> = Vec::new();
 
             let _ = init_tx.send(Ok(()));
 
@@ -238,9 +253,19 @@ impl RodioSink {
                         let source = SamplesBuffer::new(NonZero::new(1).unwrap(), sr_nz, f32_pcm);
                         player.append(source);
                     }
+                    RodioCmd::Drain { done } => {
+                        pending_drains.push(done.clone());
+                        player.play();
+                        player.append(rodio::source::EmptyCallback::new(Box::new(move || {
+                            let _ = done.send(());
+                        })));
+                    }
                     RodioCmd::Stop => {
+                        for done in pending_drains.drain(..) {
+                            let _ = done.send(());
+                        }
                         player.stop();
-                        player.clear();
+                        player.play();
                     }
                     RodioCmd::Shutdown => break,
                 }
@@ -396,6 +421,14 @@ impl AudioSink for RodioSink {
             .send(RodioCmd::Push { pcm, sample_rate })
             .map_err(|_| anyhow::anyhow!("rodio worker thread gone"))?;
         Ok(())
+    }
+
+    fn drain(&mut self) -> Result<DrainWait> {
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        self.cmd_tx
+            .send(RodioCmd::Drain { done: done_tx })
+            .map_err(|_| anyhow::anyhow!("rodio worker thread gone"))?;
+        Ok(DrainWait::Pending(done_rx))
     }
 
     fn stop(&mut self) {

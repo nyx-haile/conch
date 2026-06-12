@@ -1,5 +1,5 @@
 use crate::audio::input::{Frame, MicGateHandle};
-use crate::audio::output::AudioSink;
+use crate::audio::output::{AudioSink, DrainWait};
 use crate::interview::fillers::{FillerCache, FillerCategory};
 use crate::interview::history::{ConversationLog, Speaker, Turn};
 use crate::interview::intent::{detect_end_command, end_session_tool};
@@ -114,6 +114,7 @@ pub struct OrchestratorConfig {
     /// Pre-rendered filler audio for thinking pauses and interruptions.
     /// When `None`, no filler audio is played.
     pub fillers: Option<FillerCache>,
+    pub final_drain_timeout: Duration,
 }
 
 impl Default for OrchestratorConfig {
@@ -125,6 +126,7 @@ impl Default for OrchestratorConfig {
             max_tokens: 512,
             sample_rate: 16_000,
             fillers: None,
+            final_drain_timeout: Duration::from_secs(3),
         }
     }
 }
@@ -658,7 +660,16 @@ impl Orchestrator {
     /// Drain all Final transcript events from the STT stream.
     async fn drain_final_text(&self, stream: &mut dyn SttStream) -> String {
         let mut parts = Vec::new();
-        while let Some(ev) = stream.next_event().await {
+        let deadline = Instant::now() + self.config.final_drain_timeout;
+        loop {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                break;
+            };
+            let ev = match tokio::time::timeout(remaining, stream.next_event()).await {
+                Ok(Some(ev)) => ev,
+                Ok(None) => break,
+                Err(_) => break,
+            };
             match ev {
                 TranscriptEvent::Final { text, .. } => {
                     if !text.is_empty() {
@@ -696,7 +707,7 @@ impl Orchestrator {
                             self.sink.lock().await.push(pcm, tts_rate)?;
                         }
                         None => {
-                            outcome = SpeakOutcome::Completed;
+                            outcome = self.drain_playback_interruptible().await?;
                             break;
                         }
                     }
@@ -732,5 +743,34 @@ impl Orchestrator {
 
         self.set_status(Status::Idle).await;
         Ok(outcome)
+    }
+
+    async fn drain_playback_interruptible(&mut self) -> Result<SpeakOutcome> {
+        let wait = self.sink.lock().await.drain()?;
+        let DrainWait::Pending(rx) = wait else {
+            return Ok(SpeakOutcome::Completed);
+        };
+        let mut wait = tokio::task::spawn_blocking(move || rx.recv());
+        loop {
+            tokio::select! {
+                result = &mut wait => {
+                    let _ = result.map_err(|e| anyhow!("audio drain task failed: {e}"))?;
+                    return Ok(SpeakOutcome::Completed);
+                }
+                event = self.events.recv() => {
+                    match event {
+                        Some(UserEvent::Interrupt) => {
+                            self.sink.lock().await.stop();
+                            return Ok(SpeakOutcome::Interrupted);
+                        }
+                        Some(UserEvent::Quit) | None => {
+                            self.sink.lock().await.stop();
+                            return Ok(SpeakOutcome::Quit);
+                        }
+                        Some(_) => {}
+                    }
+                }
+            }
+        }
     }
 }

@@ -1,6 +1,7 @@
-use conch::audio::output::{AudioSink, PlaybackTap, RecordingSink, VecSink};
+use conch::audio::output::{AudioSink, DrainWait, PlaybackTap, RecordingSink, VecSink};
 use conch::audio::wav::WavSessionWriter;
 use hound::WavReader;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 #[test]
@@ -22,6 +23,37 @@ fn playback_tap_fans_out_to_sink_and_wav() {
     let reader = WavReader::open(&wav_path).unwrap();
     let samples: Vec<i16> = reader.into_samples::<i16>().map(|r| r.unwrap()).collect();
     assert_eq!(samples, vec![1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn recording_sink_forwards_drain_to_inner_sink() {
+    struct DrainSink {
+        drained: Arc<Mutex<bool>>,
+    }
+
+    impl AudioSink for DrainSink {
+        fn push(&mut self, _pcm: Vec<i16>, _sample_rate: u32) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn drain(&mut self) -> anyhow::Result<DrainWait> {
+            *self.drained.lock().unwrap() = true;
+            Ok(DrainWait::Complete)
+        }
+
+        fn stop(&mut self) {}
+    }
+
+    let tmp = TempDir::new().unwrap();
+    let drained = Arc::new(Mutex::new(false));
+    let sink = DrainSink {
+        drained: drained.clone(),
+    };
+    let mut sink = RecordingSink::new(Box::new(sink), tmp.path().join("tts.wav"));
+
+    sink.drain().unwrap();
+
+    assert!(*drained.lock().unwrap());
 }
 
 #[test]

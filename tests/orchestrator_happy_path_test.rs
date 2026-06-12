@@ -1,9 +1,10 @@
 mod fakes;
 
+use conch::audio::output::{AudioSink, DrainWait};
 use conch::interview::orchestrator::{EndSignal, Orchestrator, OrchestratorConfig};
 use conch::interview::tui::state::{AppState, Status};
 use conch::interview::tui::UserEvent;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
 
@@ -47,6 +48,7 @@ async fn opening_then_one_turn_then_voice_command_end() {
         max_tokens: 256,
         sample_rate: 16_000,
         fillers: None,
+        final_drain_timeout: Duration::from_secs(3),
     };
 
     let orch = Orchestrator::new(
@@ -113,6 +115,173 @@ async fn opening_then_one_turn_then_voice_command_end() {
     // Audio sink should have received some PCM data.
     let pcm_len = collected.lock().unwrap().len();
     assert!(pcm_len > 0, "audio sink should have received PCM data");
+}
+
+#[tokio::test]
+async fn persistent_final_stt_stream_does_not_hang_after_utterance() {
+    let stt = Arc::new(fakes::PersistentFinalStt::new(
+        "hello from persistent stream",
+    ));
+    let tts = Arc::new(fakes::FakeTts);
+    let llm = Arc::new(fakes::FakeLlm::new(vec![
+        "Welcome.".to_string(),
+        "I heard you.".to_string(),
+    ]));
+    let sink = fakes::FakeSink::new();
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Test Session".to_string(),
+        "A test brief".to_string(),
+    )));
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        final_drain_timeout: Duration::from_millis(50),
+        ..OrchestratorConfig::default()
+    };
+    let orch = Orchestrator::new(
+        llm,
+        stt,
+        tts,
+        Box::new(sink),
+        state.clone(),
+        event_rx,
+        config,
+    );
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("persistent final stream should not hang")
+        .expect("orchestrator task panicked")
+        .expect("orchestrator errored");
+    assert_eq!(result, EndSignal::UserQuit);
+    assert!(state
+        .read()
+        .await
+        .history()
+        .iter()
+        .any(|turn| turn.text == "hello from persistent stream"));
+}
+
+#[tokio::test]
+async fn endless_partial_stt_stream_uses_total_final_drain_deadline() {
+    let stt = Arc::new(fakes::EndlessPartialStt);
+    let tts = Arc::new(fakes::FakeTts);
+    let llm = Arc::new(fakes::FakeLlm::new(vec!["Welcome.".to_string()]));
+    let sink = fakes::FakeSink::new();
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Test Session".to_string(),
+        "A test brief".to_string(),
+    )));
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        final_drain_timeout: Duration::from_millis(50),
+        ..OrchestratorConfig::default()
+    };
+    let orch = Orchestrator::new(llm, stt, tts, Box::new(sink), state, event_rx, config);
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("endless partial stream should not hang")
+        .expect("orchestrator task panicked")
+        .expect("orchestrator errored");
+    assert_eq!(result, EndSignal::UserQuit);
+}
+
+#[tokio::test]
+async fn interrupt_during_playback_drain_stops_sink_and_returns_to_idle() {
+    struct PendingDrainSink {
+        drain_count: Arc<Mutex<usize>>,
+        stop_count: Arc<Mutex<usize>>,
+        pending_done: Arc<Mutex<Option<std::sync::mpsc::Sender<()>>>>,
+    }
+
+    impl AudioSink for PendingDrainSink {
+        fn push(&mut self, _pcm: Vec<i16>, _sample_rate: u32) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        fn drain(&mut self) -> anyhow::Result<DrainWait> {
+            let mut count = self.drain_count.lock().unwrap();
+            *count += 1;
+            if *count == 1 {
+                Ok(DrainWait::Complete)
+            } else {
+                let (tx, rx) = std::sync::mpsc::channel();
+                *self.pending_done.lock().unwrap() = Some(tx);
+                Ok(DrainWait::Pending(rx))
+            }
+        }
+
+        fn stop(&mut self) {
+            *self.stop_count.lock().unwrap() += 1;
+            if let Some(done) = self.pending_done.lock().unwrap().take() {
+                let _ = done.send(());
+            }
+        }
+    }
+
+    let stt = Arc::new(fakes::FakeStt::new(vec![vec!["tell me more".to_string()]]));
+    let tts = Arc::new(fakes::FakeTts);
+    let llm = Arc::new(fakes::FakeLlm::new(vec![
+        "Welcome.".to_string(),
+        "Long reply.".to_string(),
+    ]));
+    let drain_count = Arc::new(Mutex::new(0));
+    let stop_count = Arc::new(Mutex::new(0));
+    let sink = PendingDrainSink {
+        drain_count: drain_count.clone(),
+        stop_count: stop_count.clone(),
+        pending_done: Arc::new(Mutex::new(None)),
+    };
+    let state = Arc::new(RwLock::new(AppState::new(
+        "Test Session".to_string(),
+        "A test brief".to_string(),
+    )));
+    let (event_tx, event_rx) = mpsc::channel::<UserEvent>(16);
+    let config = OrchestratorConfig {
+        model: "fake-model".to_string(),
+        brief: "test".to_string(),
+        ..OrchestratorConfig::default()
+    };
+    let orch = Orchestrator::new(llm, stt, tts, Box::new(sink), state, event_rx, config);
+    let handle = tokio::spawn(async move { orch.run().await });
+
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    event_tx.send(UserEvent::MicToggle).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    event_tx.send(UserEvent::Interrupt).await.unwrap();
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    event_tx.send(UserEvent::Quit).await.unwrap();
+
+    let result = tokio::time::timeout(Duration::from_secs(2), handle)
+        .await
+        .expect("interrupt during drain should not hang")
+        .expect("orchestrator task panicked")
+        .expect("orchestrator errored");
+    assert_eq!(result, EndSignal::UserQuit);
+    assert!(*drain_count.lock().unwrap() >= 2);
+    assert!(*stop_count.lock().unwrap() >= 1);
 }
 
 #[tokio::test]

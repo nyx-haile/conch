@@ -160,6 +160,106 @@ impl FakeStt {
     }
 }
 
+pub struct PersistentFinalStt {
+    text: String,
+}
+
+impl PersistentFinalStt {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self { text: text.into() }
+    }
+}
+
+#[async_trait]
+impl SpeechToText for PersistentFinalStt {
+    async fn open_stream(&self, _config: &SttConfig) -> Result<Box<dyn SttStream>> {
+        Ok(Box::new(PersistentFinalStream {
+            text: self.text.clone(),
+            end_signalled: false,
+            sent: false,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct PersistentFinalStream {
+    text: String,
+    end_signalled: bool,
+    sent: bool,
+}
+
+#[async_trait]
+impl SttStream for PersistentFinalStream {
+    async fn send_frame(&mut self, _pcm: &[i16]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn end_of_utterance(&mut self) -> Result<()> {
+        self.end_signalled = true;
+        Ok(())
+    }
+
+    async fn next_event(&mut self) -> Option<TranscriptEvent> {
+        if !self.end_signalled || self.sent {
+            std::future::pending().await
+        } else {
+            self.sent = true;
+            Some(TranscriptEvent::Final {
+                text: self.text.clone(),
+                words: vec![],
+            })
+        }
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+pub struct EndlessPartialStt;
+
+#[async_trait]
+impl SpeechToText for EndlessPartialStt {
+    async fn open_stream(&self, _config: &SttConfig) -> Result<Box<dyn SttStream>> {
+        Ok(Box::new(EndlessPartialStream {
+            end_signalled: false,
+        }))
+    }
+}
+
+#[derive(Debug)]
+struct EndlessPartialStream {
+    end_signalled: bool,
+}
+
+#[async_trait]
+impl SttStream for EndlessPartialStream {
+    async fn send_frame(&mut self, _pcm: &[i16]) -> Result<()> {
+        Ok(())
+    }
+
+    async fn end_of_utterance(&mut self) -> Result<()> {
+        self.end_signalled = true;
+        Ok(())
+    }
+
+    async fn next_event(&mut self) -> Option<TranscriptEvent> {
+        if !self.end_signalled {
+            std::future::pending().await
+        } else {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            Some(TranscriptEvent::Partial {
+                text: "still draining".to_string(),
+                stability: 0.1,
+            })
+        }
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl SpeechToText for FakeStt {
     async fn open_stream(&self, _config: &SttConfig) -> Result<Box<dyn SttStream>> {
