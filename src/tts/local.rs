@@ -45,11 +45,25 @@ impl LocalTts {
     /// `<home>/.conch/voices/en/en_US/lessac/medium/en_US-lessac-medium.onnx`.
     pub fn from_env(home: &Path) -> Result<Self> {
         let model_path = match std::env::var("CONCH_PIPER_MODEL") {
-            Ok(s) => PathBuf::from(s),
+            Ok(s) => expand_home(home, &s),
             Err(_) => home.join(".conch/voices/en/en_US/lessac/medium/en_US-lessac-medium.onnx"),
         };
         let binary = std::env::var("CONCH_PIPER_BIN").unwrap_or_else(|_| "piper-tts".to_string());
         Self::with_model(model_path, binary)
+    }
+
+    pub fn sample_rate(&self) -> u32 {
+        self.sample_rate
+    }
+}
+
+fn expand_home(home: &Path, value: &str) -> PathBuf {
+    if value == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = value.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        PathBuf::from(value)
     }
 }
 
