@@ -1,3 +1,6 @@
+use anyhow::Context;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,6 +35,11 @@ impl Session {
         let id = SessionId::new(date, topic);
         let directory = id.directory(sessions_root);
         std::fs::create_dir_all(&directory)?;
+        if let Some(parent) = sessions_root.parent() {
+            set_private_dir(parent)?;
+        }
+        set_private_dir(sessions_root)?;
+        set_private_dir(&directory)?;
         Ok(Self {
             id,
             directory,
@@ -82,6 +90,43 @@ impl Session {
     pub fn log_path(&self) -> PathBuf {
         self.directory.join("session.log")
     }
+}
+
+pub fn write_private(path: &Path, bytes: impl AsRef<[u8]>) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .mode(0o600)
+            .open(path)
+            .with_context(|| format!("writing {}", path.display()))?;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .with_context(|| format!("setting private permissions on {}", path.display()))?;
+        file.write_all(bytes.as_ref())
+            .with_context(|| format!("writing {}", path.display()))?;
+        file.flush()
+            .with_context(|| format!("flushing {}", path.display()))?;
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes).with_context(|| format!("writing {}", path.display()))
+    }
+}
+
+fn set_private_dir(path: &Path) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("setting private permissions on {}", path.display()))?;
+    }
+    Ok(())
 }
 
 pub fn list_sessions(sessions_root: &Path) -> anyhow::Result<Vec<SessionId>> {

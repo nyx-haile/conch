@@ -1,6 +1,9 @@
 use conch::session::{Session, SessionId};
 use tempfile::TempDir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 #[test]
 fn session_id_slug_from_topic() {
     let id = SessionId::new("2026-04-14", "howtowin.lol - a side project");
@@ -35,6 +38,35 @@ fn session_create_makes_directory() {
         session.directory(),
         sessions_root.join("2026-04-14-test-project")
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn session_create_uses_private_directory_permissions() {
+    let tmp = TempDir::new().unwrap();
+    let sessions_root = tmp.path().join(".conch/sessions");
+
+    let session = Session::create(&sessions_root, "2026-04-14", "private").unwrap();
+
+    let conch_mode = std::fs::metadata(tmp.path().join(".conch"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let sessions_mode = std::fs::metadata(&sessions_root)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    let session_mode = std::fs::metadata(session.directory())
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(conch_mode & 0o077, 0);
+    assert_eq!(sessions_mode & 0o077, 0);
+    assert_eq!(session_mode & 0o077, 0);
 }
 
 #[test]

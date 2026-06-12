@@ -2,6 +2,9 @@ use conch::audio::wav::WavSessionWriter;
 use hound::WavReader;
 use tempfile::TempDir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 #[test]
 fn writer_finalizes_on_drop_and_wav_is_readable() {
     let tmp = TempDir::new().unwrap();
@@ -36,4 +39,19 @@ fn writer_survives_panic_mid_stream() {
     let reader = WavReader::open(&path).unwrap();
     let samples: Vec<i16> = reader.into_samples::<i16>().map(|r| r.unwrap()).collect();
     assert_eq!(samples, vec![10i16, 11, 12]);
+}
+
+#[cfg(unix)]
+#[test]
+fn writer_creates_private_wav_file() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("private.wav");
+
+    {
+        let mut w = WavSessionWriter::create(&path, 16_000, 1).unwrap();
+        w.write_i16(&[0i16]).unwrap();
+    }
+
+    let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode & 0o077, 0);
 }

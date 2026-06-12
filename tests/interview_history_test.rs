@@ -1,6 +1,9 @@
 use conch::interview::history::{ConversationLog, Speaker, Turn};
 use tempfile::tempdir;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 #[test]
 fn conversation_log_serializes_turns_to_json() {
     let dir = tempdir().unwrap();
@@ -62,4 +65,28 @@ fn transcript_flushes_after_each_append() {
     // Should be readable without calling finalize (crash survival).
     let md = std::fs::read_to_string(dir.path().join("t.md")).unwrap();
     assert!(md.contains("a"));
+}
+
+#[cfg(unix)]
+#[test]
+fn conversation_log_outputs_are_private() {
+    let dir = tempdir().unwrap();
+    let json = dir.path().join("conversation.json");
+    let md = dir.path().join("transcript.md");
+    let mut log = ConversationLog::new(&json, &md).unwrap();
+    log.append(Turn {
+        speaker: Speaker::User,
+        text: "secret audio transcript".into(),
+        timestamp_ms: 0,
+        speculative_hit: false,
+        interrupted: false,
+        filler_played: None,
+    })
+    .unwrap();
+    log.finalize().unwrap();
+
+    let md_mode = std::fs::metadata(&md).unwrap().permissions().mode() & 0o777;
+    let json_mode = std::fs::metadata(&json).unwrap().permissions().mode() & 0o777;
+    assert_eq!(md_mode & 0o077, 0);
+    assert_eq!(json_mode & 0o077, 0);
 }

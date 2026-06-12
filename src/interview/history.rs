@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -36,8 +38,10 @@ impl ConversationLog {
             .create(true)
             .truncate(true)
             .write(true)
+            .private_file_mode()
             .open(md_path.as_ref())
             .with_context(|| format!("opening {}", md_path.as_ref().display()))?;
+        set_private_file(&md, md_path.as_ref())?;
         Ok(Self {
             json_path: json_path.as_ref().to_path_buf(),
             md,
@@ -65,7 +69,8 @@ impl ConversationLog {
     fn write_json(&self) -> Result<()> {
         let bytes = serde_json::to_vec_pretty(&self.turns).context("serializing conversation")?;
         let tmp = self.json_path.with_extension("json.tmp");
-        std::fs::write(&tmp, bytes).with_context(|| format!("writing {}", tmp.display()))?;
+        crate::session::write_private(&tmp, bytes)
+            .with_context(|| format!("writing {}", tmp.display()))?;
         std::fs::rename(&tmp, &self.json_path).with_context(|| {
             format!("renaming {} -> {}", tmp.display(), self.json_path.display())
         })?;
@@ -74,5 +79,24 @@ impl ConversationLog {
 
     pub fn turns(&self) -> &[Turn] {
         &self.turns
+    }
+}
+
+fn set_private_file(file: &File, path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("setting private permissions on {}", path.display()))?;
+    Ok(())
+}
+
+trait PrivateFileMode {
+    fn private_file_mode(&mut self) -> &mut Self;
+}
+
+impl PrivateFileMode for OpenOptions {
+    fn private_file_mode(&mut self) -> &mut Self {
+        #[cfg(unix)]
+        self.mode(0o600);
+        self
     }
 }
