@@ -1,3 +1,4 @@
+use crate::audio::wav::WavSessionWriter;
 use anyhow::Result;
 use async_trait::async_trait;
 use cpal::SampleFormat;
@@ -46,6 +47,7 @@ pub struct MicGate {
     source: Box<dyn MicSource>,
     tx: broadcast::Sender<Frame>,
     open: Arc<AtomicBool>,
+    recorder: Option<WavSessionWriter>,
 }
 
 impl MicGate {
@@ -54,7 +56,13 @@ impl MicGate {
             source,
             tx,
             open: Arc::new(AtomicBool::new(false)),
+            recorder: None,
         }
+    }
+
+    pub fn with_recorder(mut self, recorder: WavSessionWriter) -> Self {
+        self.recorder = Some(recorder);
+        self
     }
 
     /// Clone a handle that can toggle the gate from outside the run task.
@@ -71,6 +79,9 @@ impl MicGate {
     pub async fn run(mut self) -> Result<()> {
         while let Some(frame) = self.source.next_frame().await {
             if self.open.load(Ordering::SeqCst) {
+                if let Some(recorder) = self.recorder.as_mut() {
+                    recorder.write_i16(&frame.pcm)?;
+                }
                 // Drop on send error (no subscribers).
                 let _ = self.tx.send(frame);
             }
@@ -155,9 +166,10 @@ fn build_cpal_input_stream(
     tx: tokio::sync::mpsc::UnboundedSender<Frame>,
 ) -> Result<cpal::Stream> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| anyhow::anyhow!("no default input device"))?;
+    let preferred = std::env::var("CONCH_INPUT_DEVICE").ok();
+    let device = select_input_device(&host, preferred.as_deref())?;
+    let device_name = device.name().unwrap_or_else(|_| "<unknown>".to_string());
+    tracing::info!(target: "conch::audio", device = %device_name, "cpal input device selected");
 
     // Rate-limit err_callback log spam. Shared across retry attempts so a
     // successfully-opened stream inherits accumulated counters. Stored as
@@ -266,6 +278,24 @@ fn build_cpal_input_stream(
         }
     }
     Err(last_err.unwrap_or_else(|| anyhow::anyhow!("cpal input stream build failed")))
+}
+
+fn select_input_device(host: &cpal::Host, preferred: Option<&str>) -> Result<cpal::Device> {
+    if let Some(query) = preferred.filter(|q| !q.trim().is_empty()) {
+        let query = query.to_ascii_lowercase();
+        for device in host.input_devices()? {
+            let name = device.name().unwrap_or_default();
+            if name.to_ascii_lowercase().contains(&query) {
+                return Ok(device);
+            }
+        }
+        return Err(anyhow::anyhow!(
+            "no input device matched CONCH_INPUT_DEVICE={query:?}"
+        ));
+    }
+
+    host.default_input_device()
+        .ok_or_else(|| anyhow::anyhow!("no default input device"))
 }
 
 #[derive(Clone)]

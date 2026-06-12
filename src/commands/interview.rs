@@ -35,7 +35,7 @@ pub async fn run(
     let brief = run_prep(config, &client, &model_slug, topic)
         .await
         .context("prep stage failed")?;
-    std::fs::write(session.brief_path(), &brief).context("writing brief.md")?;
+    crate::session::write_private(&session.brief_path(), &brief).context("writing brief.md")?;
 
     println!("Brief written to {}", session.brief_path().display());
 
@@ -119,6 +119,7 @@ pub async fn run(
         max_tokens: 1024,
         sample_rate: 16_000,
         fillers: None,
+        final_drain_timeout: std::time::Duration::from_secs(3),
     };
 
     let llm_caller: Arc<dyn LlmCaller> = Arc::new(client);
@@ -140,7 +141,14 @@ pub async fn run(
             Ok(mic) => {
                 let (mic_tx, mic_rx) =
                     tokio::sync::broadcast::channel::<crate::audio::input::Frame>(256);
-                let gate = crate::audio::input::MicGate::new(Box::new(mic), mic_tx);
+                let recorder = crate::audio::wav::WavSessionWriter::create(
+                    &session.raw_audio_path(),
+                    16_000,
+                    1,
+                )
+                .context("creating raw mic audio recorder")?;
+                let gate = crate::audio::input::MicGate::new(Box::new(mic), mic_tx)
+                    .with_recorder(recorder);
                 let handle = gate.toggle_handle();
                 tokio::spawn(async move {
                     if let Err(e) = gate.run().await {
@@ -150,6 +158,10 @@ pub async fn run(
                 orch = orch.with_mic(mic_rx, handle);
             }
             Err(e) => {
+                state
+                    .write()
+                    .await
+                    .set_banner(Some(format!("Mic unavailable: {e}")));
                 tracing::warn!(err = %e, "mic unavailable; continuing without live capture");
             }
         }
