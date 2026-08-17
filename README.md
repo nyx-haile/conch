@@ -49,6 +49,13 @@ populate the directory yourself, e.g. via
 `hf download smcleod/nemotron-speech-streaming-en-0.6b-int8 --local-dir <dir>`).
 Once the bundle is cached conch runs fully offline.
 
+The pinned repo and the on-device inference path are covered by an opt-in
+integration test that the default `cargo test` skips (it downloads nothing):
+
+```bash
+CONCH_STT_LIVE=1 cargo test --test stt_local_live_test -- --nocapture --test-threads=1
+```
+
 ### Transcription corrections
 
 Names, jargon, and personal vocabulary that STT reliably mangles can be fixed
