@@ -8,7 +8,17 @@ Tool use:\n\
 - Call the `end_session` tool when the angles are meaningfully covered or the user signals they are done. Provide a one-line `reason`. The system will play your closing turn, then exit.\n\n\
 Interview brief follows.\n";
 
-pub fn compose_system_prompt(brief: &str, brand: Option<&str>) -> String {
+/// Assemble the interview system prompt.
+///
+/// `corrections` is the prompt-memory block from
+/// [`crate::stt::corrections::CorrectionStore::prompt_memory_text`] — personal
+/// vocabulary that speech-to-text reliably mangles. It is appended last so it
+/// stays close to the live transcript in the context window.
+pub fn compose_system_prompt(
+    brief: &str,
+    brand: Option<&str>,
+    corrections: Option<&str>,
+) -> String {
     let mut out = String::with_capacity(BASE.len() + brief.len() + 512);
     out.push_str(BASE);
     out.push_str("\n---\n");
@@ -16,6 +26,13 @@ pub fn compose_system_prompt(brief: &str, brand: Option<&str>) -> String {
     if let Some(brand) = brand {
         out.push_str("\n\n---\nVoice & tone guidance:\n");
         out.push_str(brand.trim());
+    }
+    if let Some(corrections) = corrections {
+        let corrections = corrections.trim();
+        if !corrections.is_empty() {
+            out.push_str("\n\n---\n");
+            out.push_str(corrections);
+        }
     }
     out
 }

@@ -9,6 +9,7 @@ use crate::interview::tui::state::{AppState, Status, TurnView};
 use crate::interview::tui::UserEvent;
 use crate::llm::client::LlmClient;
 use crate::llm::types::{ChatRequest, ChatResponse, Message, ToolCall};
+use crate::stt::corrections::CorrectionStore;
 use crate::stt::{SpeechToText, SttConfig, SttStream, TranscriptEvent};
 use crate::tts::{TextToSpeech, TtsConfig};
 use anyhow::{anyhow, Result};
@@ -115,6 +116,10 @@ pub struct OrchestratorConfig {
     /// When `None`, no filler audio is played.
     pub fillers: Option<FillerCache>,
     pub final_drain_timeout: Duration,
+    /// Personal-vocabulary corrections. Replacement rules are applied to the
+    /// final transcript before the LLM handoff; the preferred-transcription
+    /// memory is injected into the system prompt. `None` = no corrections.
+    pub corrections: Option<CorrectionStore>,
 }
 
 impl Default for OrchestratorConfig {
@@ -127,6 +132,7 @@ impl Default for OrchestratorConfig {
             sample_rate: 16_000,
             fillers: None,
             final_drain_timeout: Duration::from_secs(3),
+            corrections: None,
         }
     }
 }
@@ -205,7 +211,16 @@ impl Orchestrator {
 
     async fn run_inner(&mut self) -> Result<EndSignal> {
         // Build the system prompt and seed the message history.
-        let system = compose_system_prompt(&self.config.brief, self.config.brand.as_deref());
+        let correction_memory = self
+            .config
+            .corrections
+            .as_ref()
+            .and_then(CorrectionStore::prompt_memory_text);
+        let system = compose_system_prompt(
+            &self.config.brief,
+            self.config.brand.as_deref(),
+            correction_memory.as_deref(),
+        );
         self.messages.push(Message::system(system));
 
         // ---- Opening turn ----
@@ -450,6 +465,14 @@ impl Orchestrator {
         } else {
             early_finals.push(late_text);
             early_finals.join(" ")
+        };
+
+        // Personal-vocabulary fixups (longest rule first) land here, before the
+        // text is committed to the log or handed to the LLM, so every
+        // downstream consumer sees the corrected wording.
+        let user_text = match &self.config.corrections {
+            Some(store) => store.apply_replacements(&user_text),
+            None => user_text,
         };
 
         if user_text.is_empty() {

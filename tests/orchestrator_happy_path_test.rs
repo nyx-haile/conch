@@ -49,6 +49,7 @@ async fn opening_then_one_turn_then_voice_command_end() {
         sample_rate: 16_000,
         fillers: None,
         final_drain_timeout: Duration::from_secs(3),
+        corrections: None,
     };
 
     let orch = Orchestrator::new(

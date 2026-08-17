@@ -99,6 +99,11 @@ impl Config {
     pub fn fillers_dir(&self) -> PathBuf {
         self.conch_dir().join("fillers")
     }
+    /// Hand-editable JSON store of transcription corrections
+    /// (`crate::stt::corrections::CorrectionStore`).
+    pub fn corrections_file(&self) -> PathBuf {
+        self.conch_dir().join("corrections.json")
+    }
     pub fn parakeet_model_dir(&self) -> PathBuf {
         if let Ok(p) = std::env::var("CONCH_PARAKEET_MODEL_DIR") {
             return PathBuf::from(p);

@@ -4,6 +4,10 @@ Voice interview CLI. You pick a topic; conch drives a spoken Q&A over mic + TTS
 and emits a written brief. Three depths: `sketch` (Haiku), `talk` (Sonnet),
 `chronicle` (Opus).
 
+Current status: source-install BYOK beta. Conch uses the provider keys you
+configure locally; there is no public hosted Conch account, login command,
+managed API key, self-serve billing, or signed binary download yet.
+
 ## Pipeline
 
 - **Audio**: `cpal` mic → 16 kHz PCM
@@ -45,6 +49,31 @@ populate the directory yourself, e.g. via
 `hf download smcleod/nemotron-speech-streaming-en-0.6b-int8 --local-dir <dir>`).
 Once the bundle is cached conch runs fully offline.
 
+### Transcription corrections
+
+Names, jargon, and personal vocabulary that STT reliably mangles can be fixed
+in `~/.conch/corrections.json` — a hand-editable file with two lists:
+
+```json
+{
+  "preferred": [
+    { "raw": "pepper ex", "preferred": "Pepper X" }
+  ],
+  "replacements": [
+    { "from": "pepper x", "to": "Pepper X" }
+  ]
+}
+```
+
+- `replacements` are deterministic literal substitutions applied to the final
+  transcript before it reaches the LLM. Matching is ASCII-case-insensitive and
+  the longest key wins at each position, so `pepper x` beats `pepper`.
+- `preferred` entries are `raw → canonical` examples formatted into prompt
+  memory and appended to the interview system prompt, so the model reads a
+  mangled name the way you meant it.
+
+Both lists are optional; a missing or empty file simply means no corrections.
+
 ## Config
 
 Environment (see `.env.example`):
@@ -82,7 +111,10 @@ conch is independent work. Related projects studied during design:
   Nemotron int8 bundle URLs in conch's local STT backend follow the
   reference design in its `pepperx-asr` crate. Upstream MIT text is
   vendored at `LICENSES/pepper-x-MIT.txt` and referenced from
-  `src/stt/local.rs`.
+  `src/stt/local.rs`. The corrections store in `src/stt/corrections.rs`
+  mirrors the shape of its `pepperx-corrections` crate — persisted rules
+  plus a prompt-memory formatter — but is an independent implementation; no
+  code was copied.
 
 Models & services (not bundled; fetched on demand when the relevant backend is
 selected):

@@ -112,6 +112,9 @@ pub async fn run(
 
     let log = ConversationLog::new(session.conversation_path(), session.transcript_path())?;
 
+    let corrections =
+        crate::stt::corrections::CorrectionStore::load_or_default(config.corrections_file());
+
     let orch_config = OrchestratorConfig {
         model: model_slug.clone(),
         brief: brief.clone(),
@@ -120,6 +123,7 @@ pub async fn run(
         sample_rate: 16_000,
         fillers: None,
         final_drain_timeout: std::time::Duration::from_secs(3),
+        corrections: Some(corrections),
     };
 
     let llm_caller: Arc<dyn LlmCaller> = Arc::new(client);

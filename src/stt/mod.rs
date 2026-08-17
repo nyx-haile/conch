@@ -1,3 +1,4 @@
+pub mod corrections;
 pub mod deepgram;
 pub mod local;
 
