@@ -1,0 +1,51 @@
+{
+  "autoReview": [
+    "open"
+  ],
+  "triggerOnDrafts": true,
+  "strictness": 2,
+  "commentTypes": [
+    "logic",
+    "syntax"
+  ],
+  "excludeAuthors": [
+    "dependabot[bot]",
+    "renovate[bot]"
+  ],
+  "statusCommentsEnabled": true,
+  "includeConfidenceScore": true,
+  "shouldUpdateDescription": false,
+  "hideFooter": true,
+  "ignorePatterns": "**/*.lock\npackage-lock.json\nCargo.lock\nuv.lock\n**/target/**\n**/node_modules/**\n**/dist/**\n**/.venv/**\n**/*.min.*\n**/*.svg\n**/*.png\n**/*.jpg\n**/*.pdf\n**/*.ttf\n**/*.woff*",
+  "instructions": "Review for correctness and security first, then for whether the pull request description matches the diff. Always flag: any secret or credential in the diff; any private personal material (health, immigration, equity or runway figures, third-party contact details, verbatim private correspondence, candid assessments of named people); any claim in docs or user-facing copy that the code does not evidence; committed build artifacts. Prefer fewer, demonstrated findings over many speculative ones. Each finding should name the file and line, the concrete failure scenario, and the smallest fix. Do not comment on formatting or style. Voice interview CLI (Rust + TypeScript, tests under tests/). Audio, provider keys and transcripts are handled locally: never commit keys or recorded content; the README's status claims must match what the code ships.",
+  "rules": [
+    {
+      "id": "no-secrets",
+      "rule": "No credential, token, JWT, API key, private key or .env content may appear in the diff, in fixtures, or in committed data files.",
+      "severity": "high"
+    },
+    {
+      "id": "no-private-material",
+      "rule": "No personal health, immigration, equity/runway, third-party contact details, verbatim private correspondence, or candid assessments of named individuals may enter the repository; refer to such material by pointer only.",
+      "severity": "high"
+    },
+    {
+      "id": "description-matches-diff",
+      "rule": "The PR description must describe what the diff actually does; flag claims of work, tests or verification that the diff does not contain.",
+      "severity": "medium"
+    },
+    {
+      "id": "no-build-artifacts",
+      "rule": "Build outputs (target/, dist/, node_modules/, *.rlib, *.rmeta, compiled binaries) must not be committed.",
+      "severity": "medium"
+    },
+    {
+      "id": "shell-fail-closed",
+      "rule": "Shell scripts must start with `set -euo pipefail` and must not turn a failed check into a passing exit code.",
+      "scope": [
+        "**/*.sh"
+      ],
+      "severity": "medium"
+    }
+  ]
+}
