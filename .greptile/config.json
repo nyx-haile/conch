@@ -1,7 +1,5 @@
 {
-  "autoReview": [
-    "open"
-  ],
+  "autoReview": [],
   "triggerOnDrafts": true,
   "strictness": 2,
   "commentTypes": [
